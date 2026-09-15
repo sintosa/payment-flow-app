@@ -34,6 +34,12 @@ export function quoteGuests(policy, { guests, premiumFeatures, templateId }) {
   return { guests, rate, listTotal, discount, total: listTotal - discount };
 }
 
+// Bill-row labels. A row reads as the thing being bought ("Premium template"), not as a
+// category with the thing repeated underneath it.
+const TEMPLATE_LINE_LABEL = { free: "Free template", premium: "Premium template" };
+
+// templateId null prices the template at 0 and omits its line, which is how the
+// capacity-only bill (activate / top-up) is quoted without a second bill-builder.
 export function quotePublish(policy, { templateId, premiumFeatures, capacity }) {
   const templateAmount = policy.templatePrice[templateId] ?? 0;
   const rate = perGuestRate(policy, { premiumFeatures, templateId });
@@ -41,7 +47,7 @@ export function quotePublish(policy, { templateId, premiumFeatures, capacity }) 
 
   const lines = [];
   if (templateAmount > 0) {
-    lines.push({ key: "template", label: "Template", detail: `${templateId} template`, amount: templateAmount });
+    lines.push({ key: "template", label: TEMPLATE_LINE_LABEL[templateId] ?? "Template", amount: templateAmount });
   }
   if (capacityAmount > 0) {
     lines.push({ key: "capacity", label: "Guest capacity", detail: `${capacity} x ${rate} coins`, amount: capacityAmount });

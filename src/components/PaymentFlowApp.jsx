@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Lock, ArrowLeft, Check, Users, X, UploadCloud, RotateCcw, PlusCircle, Radio, ListChecks, AlertTriangle, CreditCard, ShieldCheck, Mail, Phone, KeyRound, LogOut, Trash2, UserCircle2 } from "lucide-react";
-import { FLOW2_POLICY, FLOW2_STARTING_BALANCE, COIN_PACKS, perGuestRate, buildTemplates, quoteGuests, quotePublish, quotePremiumUpgrade } from "@/pricing/policy";
+import { FLOW2_POLICY, FLOW2_STARTING_BALANCE, COIN_PACKS, perGuestRate, buildTemplates, quotePublish, quotePremiumUpgrade } from "@/pricing/policy";
 import { flow2AddonRateChangeNote, flow2AddonUpsellNote, flow2TemplateScreenSubtitle, flow2FlowCardBlurb, flow2FlowCardPoints } from "@/pricing/copy";
 
 // ---------- Design tokens (matched to the Airawath Figma file) ----------
@@ -142,7 +142,7 @@ const SPECIAL_REQUESTS = [
   { name: "Raymie Jose", tag: "Allergy", message: "No nuts please, severe allergy." },
 ];
 
-function LockBlur({ locked, label, onUpgrade, children }) {
+function LockBlur({ locked, label, onUpgrade, children, actionLabel = "Upgrade" }) {
   if (!locked) return children;
   return (
     <div className="relative rounded-2xl overflow-hidden">
@@ -156,7 +156,7 @@ function LockBlur({ locked, label, onUpgrade, children }) {
           {label}
         </p>
         <button onClick={onUpgrade} className="px-4 py-2 rounded-lg text-white text-xs font-semibold" style={{ background: C.navy }}>
-          Upgrade
+          {actionLabel}
         </button>
       </div>
     </div>
@@ -2136,14 +2136,12 @@ function FlowSelectScreen({ onSelectFlow }) {
 
 // =====================================================================
 // FLOW 2 — Per Invite Based
-// No guest tiers. Every guest costs coins the moment they're actually
-// added — via Guest Management, or by RSVPing on the public link. Every
-// template is 2 coins/guest (5 if Premium Features are on) — the premium
-// template's price buys the design only, not the features. The host sets
-// a guest capacity before the link can be shared; nothing is charged for
-// that capacity up front — it's just the ceiling. Guests beyond capacity,
-// or guests the balance can't currently cover, are hidden until the host
-// unlocks them.
+// No guest tiers. The host buys guest capacity up front and the coins leave
+// the balance at that moment; a guest then consumes capacity that was already
+// paid for, whether they RSVP on the public link or the host adds them in
+// Guest Management. Every template is 2 coins/guest (5 if Premium Features are
+// on) — the premium template's price buys the design only, not the features.
+// Guests past the capacity bought are hidden until the host buys more.
 // =====================================================================
 
 function getFlow2Rate(template, addonEnabled) {
@@ -2247,240 +2245,267 @@ function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onCont
   );
 }
 
-// ---------- Flow 2, Screen 3: Confirm & Publish (template cost only — guest capacity is bought separately, up front) ----------
-function ConfirmPublishScreenFlow2({ template, quote, addonActive, coins, onPublish, onCancel, onTopUp }) {
-  const cost = quote.total;
-  const canPay = coins >= cost;
-  const shortfall = Math.max(0, cost - coins);
+// ---------- Flow 2, Screen 3: Capacity (replaces GuestCapacityModal + ConfirmPublishScreenFlow2) ----------
+// Per-guest pricing: the host buys guest capacity up front and coins leave the balance
+// immediately. There is no estimate, no auto-redeem, and unused capacity does not come back.
+//
+// Modes:
+//   "publish"  - after editing the template. Bills template + capacity, itemised.
+//                Secondary action publishes the template alone, capacity 0, share link still off.
+//   "activate" - from the paywalled share link on the published screen. Bills capacity only.
+//   "topup"    - overflow banner, or sending to more guests than were paid for. Bills the
+//                additional capacity only.
+//
+// `draft` is always "capacity being bought right now", never a running total, in every mode.
+//
+// Ambient consumption counters ("3 of 10 capacity used") are deliberately absent - they nag.
+// The added-vs-paid line below is NOT that: it is the arithmetic behind a charge the host is
+// being asked to approve this second, and it disappears the moment there is nothing to charge.
+//
+// Prices never come from this file. `quote(capacity)` is a prop and is the only source of
+// the bill; `rate` is display-only, for the arithmetic sub-label.
+//
+//   quote(capacity) -> {
+//     rows:  [{ id, label, detail?, amount, originalAmount? }],
+//     total: number
+//   }
+//
+// `lines`/`key`/`listAmount` are accepted as aliases for `rows`/`id`/`originalAmount`, because
+// src/pricing/policy.js spells them that way.
+//
+// A row carrying an original amount greater than `amount` renders the original struck through
+// beside the charged figure. Nothing in this flow sets it; the branch exists for the
+// discounted flow being added later, so the payment step does not have to be reopened.
+function CapacityScreen({
+  mode,
+  rate,
+  coins,
+  template = null,
+  paidCapacity = 0,
+  shortfallGuests = 0,
+  addedGuests = 0,
+  quote,
+  presets = [10, 25, 50, 100, 250],
+  defaultCapacity = 25,
+  onPay,
+  onSkip,
+  onClose,
+  onTopUp,
+}) {
+  // Seeded once per mount, and this component only mounts when the host enters the step -
+  // so there is no stale-draft resync problem to solve. Do not hoist this above a guard.
+  // Smallest preset that clears the shortfall - 5 over opens at 10, and the host is free to
+  // push it to 250. Seeding the exact overflow instead is what turns every overflow into
+  // another trip back here.
+  const [draft, setDraft] = useState(() => {
+    if (shortfallGuests > 0) {
+      return presets.find((p) => p >= shortfallGuests) ?? shortfallGuests;
+    }
+    return defaultCapacity;
+  });
+
+  const bill = useMemo(() => quote(draft), [quote, draft]);
+  const rows = (bill.rows ?? bill.lines ?? []).map((r) => ({
+    id: r.id ?? r.key,
+    label: r.label,
+    detail: r.detail,
+    amount: r.amount,
+    originalAmount: r.originalAmount ?? r.listAmount,
+  }));
+  const total = bill.total;
+
+  const canPay = coins >= total;
+  const coinShortfall = Math.max(0, total - coins);
+
+  const capacityRow = rows.find((r) => r.id === "capacity");
+  const capacityAmount = capacityRow ? capacityRow.amount : draft * rate;
+
+  const templateCost = template ? template.cost : 0;
+
+  const copy = {
+    publish: {
+      title: "Publish your invite",
+      subtitle: "Choose how many guests you're paying for. Coins leave your balance now.",
+      primary: total > 0 ? `Pay ${total} coins & Publish` : "Publish",
+      secondary: "Publish without a share link for now",
+      secondaryNote:
+        templateCost > 0
+          ? `Your invite goes live for ${templateCost} coins, but the share link stays off until you buy capacity.`
+          : "Your invite goes live free, but the share link stays off until you buy capacity.",
+    },
+    activate: {
+      title: "Activate your share link",
+      subtitle: "Buy the guest capacity that switches your share link on. Coins leave your balance now.",
+      primary: `Pay ${total} coins & Activate Link`,
+      secondary: "Back",
+      secondaryNote: null,
+    },
+    topup: {
+      title: "Add guest capacity",
+      subtitle: "Buy more capacity so the rest of your guests can RSVP.",
+      primary: `Pay ${total} coins & Add Capacity`,
+      secondary: "Not now",
+      secondaryNote: null,
+    },
+  }[mode];
 
   return (
-    <div className="min-h-[calc(100vh-56px)] flex items-center justify-center p-6">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 flex flex-col items-center gap-6">
-        <div className="w-24 h-24 rounded-full flex items-center justify-center" style={{ background: "linear-gradient(160deg,#f3c65a,#c8862b)" }}>
-          <Coin size={56} />
-        </div>
-
-        <div className="flex flex-col items-center gap-4 w-full">
-          <h2 className="text-2xl font-bold text-center" style={{ color: C.text }}>
-            Your invite is ready to publish
-          </h2>
-          <div className="w-full rounded-2xl p-4 flex flex-col gap-3" style={{ background: "#f2f2f2", border: `1px solid ${C.navy}` }}>
-            <HighlightRow
-              title={cost > 0 ? `Costs ${cost} coins` : "Free to publish"}
-              subtitle={cost > 0 ? "One-time payment to publish your invite." : "No charge for publishing this template."}
-            />
-            <div style={{ borderTop: `1px solid ${C.border}` }} />
-            <HighlightRow
-              title="Guest capacity is bought separately"
-              subtitle="You'll buy guest slots next, in one payment. Nothing is ever deducted on its own after that."
-            />
-            <div style={{ borderTop: `1px solid ${C.border}` }} />
-            <HighlightRow
-              title={addonActive ? "Premium Features included" : "Basic features included"}
-              subtitle={addonActive ? "Polls, Surveys & Broadcast are ready to use." : "You can add Premium Features anytime from Edit Template."}
-            />
-          </div>
-        </div>
-
-        {cost > 0 && (
-          <div
-            className="w-full rounded-2xl p-4 flex items-center justify-between text-white"
-            style={{ background: "linear-gradient(120deg,#452c90,#3f258d)", display: cost > 0 ? "flex" : "none" }}
-          >
-            <div>
-              <p className="text-xs opacity-80">Your Balance</p>
-              <div className="flex items-center gap-2 mt-1">
-                <Coin size={22} />
-                <span className="text-2xl font-bold">{coins}</span>
-              </div>
-            </div>
-            <Coin size={40} />
-          </div>
-        )}
-
-        {cost > 0 && !canPay && (
-          <div className="w-full rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3" style={{ background: "#fdeceb", color: C.red }}>
-            <span>
-              You're short {shortfall} coin{shortfall === 1 ? "" : "s"} to publish.
-            </span>
-            <button
-              onClick={() => onTopUp(shortfall)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
-              style={{ background: C.gold }}
-            >
-              <CreditCard size={14} /> Buy Coins
-            </button>
-          </div>
-        )}
-
-        <div className="w-full flex flex-col gap-3">
-          <button
-            onClick={() => canPay && onPublish()}
-            disabled={!canPay}
-            className="w-full h-12 rounded-xl font-semibold text-white"
-            style={{ background: canPay ? C.navy : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
-          >
-            {cost > 0 ? "Yes, Pay & Publish" : "Yes, Publish"}
-          </button>
-          <button onClick={onCancel} className="text-sm font-semibold" style={{ color: C.text }}>
-            Cancel
-          </button>
-        </div>
+    <div className="min-h-[calc(100vh-56px)]" style={{ background: C.bg }}>
+      <div className="flex items-center px-8 py-3 border-b" style={{ borderColor: C.border }}>
+        <button onClick={onClose} className="flex items-center gap-1 text-sm font-semibold" style={{ color: C.text }}>
+          <ArrowLeft size={16} /> Back
+        </button>
       </div>
-    </div>
-  );
-}
 
-// ---------- Flow 2: Guest Capacity modal ----------
-// Transitional: a full-screen capacity purchase replaces this modal in the next commit.
-// mode "initial": nothing bought yet — pick a slot count, pay for it, and the share link unlocks.
-// mode "unlock": guests have landed past the slots already paid for; buying that many more reveals them.
-// Both modes are a purchase. quoteCapacity is the single source of the number on the button.
-function GuestCapacityModal({ open, mode, coins, capacityPaid, overflowCount, quoteCapacity, onSetInitial, onUnlock, onClose, onTopUp }) {
-  const [draft, setDraft] = useState(capacityPaid || 25);
-  if (!open) return null;
+      <div className="flex justify-center px-6 py-10">
+        <div className="bg-white rounded-3xl w-full max-w-md p-8 flex flex-col gap-5">
+          <div>
+            <h2 className="text-2xl font-bold" style={{ color: C.text }}>
+              {copy.title}
+            </h2>
+            <p className="text-sm mt-1" style={{ color: C.muted }}>
+              {copy.subtitle}
+            </p>
+          </div>
 
-  const presets = FLOW2_POLICY.capacityPresets;
-  const quote = quoteCapacity(mode === "initial" ? draft : overflowCount);
-  const canBuy = coins >= quote.total;
-  const shortfall = Math.max(0, quote.total - coins);
+          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
+            Guests you&apos;re paying for
+          </p>
 
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(8,8,8,0.45)", zIndex: 50 }} className="flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 flex flex-col gap-5">
-        {mode === "initial" ? (
-          <>
-            <div>
-              <h2 className="text-xl font-semibold" style={{ color: C.text }}>
-                Buy your guest capacity
-              </h2>
-              <p className="text-sm mt-1" style={{ color: C.muted }}>
-                Decide how many guests you're planning for and pay for those slots now, at{" "}
-                <strong>{quote.rate} coins per slot</strong>. A slot is a slot — it covers a guest whether they RSVP via
-                your link or you add them in Guest Management.
+          {/* Preset row - markup carried over from GuestCapacityModal unchanged. */}
+          <div className="flex flex-wrap gap-2">
+            {presets.map((p) => (
+              <button
+                key={p}
+                onClick={() => setDraft(p)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold"
+                style={{ background: draft === p ? C.navy : C.bg, color: draft === p ? "white" : C.text }}
+              >
+                {p} guests
+              </button>
+            ))}
+          </div>
+
+          {/* Stepper - markup carried over from GuestCapacityModal unchanged. */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setDraft((d) => Math.max(1, d - 5))}
+              className="w-10 h-10 rounded-lg font-bold text-lg"
+              style={{ border: `1px solid ${C.border}`, color: C.text }}
+            >
+              &minus;
+            </button>
+            <input
+              type="number"
+              value={draft}
+              onChange={(e) => setDraft(Math.max(1, Number(e.target.value) || 1))}
+              className="flex-1 h-10 rounded-lg text-center font-bold text-lg"
+              style={{ border: `1px solid ${C.border}`, color: C.text }}
+            />
+            <button
+              onClick={() => setDraft((d) => d + 5)}
+              className="w-10 h-10 rounded-lg font-bold text-lg"
+              style={{ border: `1px solid ${C.border}`, color: C.text }}
+            >
+              +
+            </button>
+          </div>
+
+          {shortfallGuests > 0 && addedGuests > 0 && (
+            <p className="text-sm" style={{ color: C.text }}>
+              You&apos;ve added {addedGuests} guest{addedGuests === 1 ? "" : "s"} and paid for {paidCapacity}.
+            </p>
+          )}
+
+          {/* Itemised bill. Rule and total render only when there are two or more rows. */}
+          {rows.length > 0 && (
+          <div className="rounded-2xl p-5 flex flex-col gap-3" style={{ background: C.bg }}>
+            {rows.map((row) => (
+              <div key={row.id} className="flex items-baseline justify-between gap-4">
+                <div>
+                  <p className="text-sm" style={{ color: C.text }}>
+                    {row.label}
+                  </p>
+                  {row.detail && (
+                    <p className="text-xs mt-0.5" style={{ color: C.muted }}>
+                      {row.detail}
+                    </p>
+                  )}
+                </div>
+                <span
+                  className="flex items-baseline gap-2 text-sm font-semibold whitespace-nowrap"
+                  style={{ color: C.text }}
+                >
+                  {row.originalAmount > row.amount && (
+                    <span style={{ color: C.muted, textDecoration: "line-through" }}>{row.originalAmount}</span>
+                  )}
+                  <span>{row.amount}</span>
+                </span>
+              </div>
+            ))}
+
+            {rows.length > 1 && (
+              <>
+                <div style={{ borderTop: `1px solid ${C.border}` }} />
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-sm font-bold" style={{ color: C.text }}>
+                    Total
+                  </span>
+                  <span
+                    className="flex items-center gap-2 text-xl font-bold whitespace-nowrap"
+                    style={{ color: C.navy }}
+                  >
+                    <Coin size={20} /> {total}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+          )}
+
+          {!canPay && (
+            <div
+              className="rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3"
+              style={{ background: "#fdeceb", color: C.red }}
+            >
+              <span>
+                You&apos;re short {coinShortfall} coin{coinShortfall === 1 ? "" : "s"}.
+              </span>
+              <button
+                onClick={() => onTopUp(coinShortfall)}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
+                style={{ background: C.gold }}
+              >
+                <CreditCard size={14} /> Buy Coins
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => canPay && onPay(draft, bill)}
+              disabled={!canPay}
+              className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
+              style={{ background: canPay ? C.navy : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
+            >
+              <Coin size={18} /> {copy.primary}
+            </button>
+            <p className="text-xs text-center" style={{ color: C.muted }}>
+              {draft} guest{draft === 1 ? "" : "s"} &times; {rate} coin{rate === 1 ? "" : "s"} = {capacityAmount} coins
+            </p>
+          </div>
+
+          <div className="flex flex-col items-center gap-1">
+            <button onClick={onSkip} className="text-sm font-semibold" style={{ color: C.text }}>
+              {copy.secondary}
+            </button>
+            {copy.secondaryNote && (
+              <p className="text-xs text-center" style={{ color: C.muted }}>
+                {copy.secondaryNote}
               </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {presets.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setDraft(p)}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold"
-                  style={{ background: draft === p ? C.navy : C.bg, color: draft === p ? "white" : C.text }}
-                >
-                  {p} guests
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setDraft((d) => Math.max(1, d - 5))}
-                className="w-10 h-10 rounded-lg font-bold text-lg"
-                style={{ border: `1px solid ${C.border}`, color: C.text }}
-              >
-                −
-              </button>
-              <input
-                type="number"
-                value={draft}
-                onChange={(e) => setDraft(Math.max(1, Number(e.target.value) || 1))}
-                className="flex-1 h-10 rounded-lg text-center font-bold text-lg"
-                style={{ border: `1px solid ${C.border}`, color: C.text }}
-              />
-              <button
-                onClick={() => setDraft((d) => d + 5)}
-                className="w-10 h-10 rounded-lg font-bold text-lg"
-                style={{ border: `1px solid ${C.border}`, color: C.text }}
-              >
-                +
-              </button>
-            </div>
-
-            <div className="rounded-2xl p-5 flex items-center justify-between" style={{ background: C.bg }}>
-              <span className="text-sm" style={{ color: C.text }}>
-                {quote.guests} slots &times; {quote.rate} coins
-              </span>
-              <span className="flex items-center gap-2 text-xl font-bold" style={{ color: C.navy }}>
-                <Coin size={20} /> {quote.total}
-              </span>
-            </div>
-
-            {!canBuy && (
-              <div className="rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3" style={{ background: "#fdeceb", color: C.red }}>
-                <span>
-                  You&apos;re short {shortfall} coin{shortfall === 1 ? "" : "s"}.
-                </span>
-                <button
-                  onClick={() => onTopUp(shortfall)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
-                  style={{ background: C.gold }}
-                >
-                  <CreditCard size={14} /> Buy Coins
-                </button>
-              </div>
             )}
-
-            <button
-              onClick={() => canBuy && onSetInitial(draft)}
-              disabled={!canBuy}
-              className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
-              style={{ background: canBuy ? C.navy : "#9aa4ab", cursor: canBuy ? "pointer" : "not-allowed" }}
-            >
-              <Coin size={18} /> Pay {quote.total} Coins &amp; Set Capacity
-            </button>
-          </>
-        ) : (
-          <>
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-xl font-semibold" style={{ color: C.text }}>
-                  Unlock hidden guests
-                </h2>
-                <p className="text-sm mt-1" style={{ color: C.muted }}>
-                  {`${overflowCount} guest${overflowCount === 1 ? " is" : "s are"} past the ${capacityPaid} slot${capacityPaid === 1 ? "" : "s"} you've paid for. Buy ${overflowCount} more slot${overflowCount === 1 ? "" : "s"} to cover them.`}
-                </p>
-              </div>
-              <button onClick={onClose} aria-label="Close">
-                <X size={18} color={C.muted} />
-              </button>
-            </div>
-
-            <div className="rounded-2xl p-5 flex items-center justify-between" style={{ background: C.bg }}>
-              <span className="text-sm" style={{ color: C.text }}>
-                {quote.guests} slots &times; {quote.rate} coins
-              </span>
-              <span className="flex items-center gap-2 text-xl font-bold" style={{ color: C.navy }}>
-                <Coin size={20} /> {quote.total}
-              </span>
-            </div>
-
-            {!canBuy && (
-              <div className="rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3" style={{ background: "#fdeceb", color: C.red }}>
-                <span>
-                  You're short {shortfall} coin{shortfall === 1 ? "" : "s"}.
-                </span>
-                <button
-                  onClick={() => onTopUp(shortfall)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
-                  style={{ background: C.gold }}
-                >
-                  <CreditCard size={14} /> Buy Coins
-                </button>
-              </div>
-            )}
-
-            <button
-              onClick={() => canBuy && onUnlock(quote.guests)}
-              disabled={!canBuy}
-              className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
-              style={{ background: canBuy ? C.navy : "#9aa4ab", cursor: canBuy ? "pointer" : "not-allowed" }}
-            >
-              <Coin size={18} /> Unlock for {quote.total} Coins
-            </button>
-          </>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -2500,12 +2525,12 @@ function PremiumFeaturesUpgradeModal({ open, quote, coins, onConfirm, onClose, o
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-xl font-semibold" style={{ color: C.text }}>
-              Unlock Premium Features
+              Switch on Premium Features
             </h2>
             <p className="text-sm mt-1" style={{ color: C.muted }}>
               This raises your rate from {oldRate} to {newRate} coins per slot. You've already bought {paidSlots}{" "}
               slot{paidSlots === 1 ? "" : "s"} at {oldRate} coins each — pay the {diff}-coin difference on each of them
-              now to unlock Premium Features. Any slots you buy later cost {newRate} coins.
+              now to switch Premium Features on. Any slots you buy later cost {newRate} coins.
             </p>
           </div>
           <button onClick={onClose} aria-label="Close">
@@ -2543,7 +2568,7 @@ function PremiumFeaturesUpgradeModal({ open, quote, coins, onConfirm, onClose, o
           className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
           style={{ background: canPay ? C.navy : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
         >
-          <Coin size={18} /> {cost > 0 ? `Pay ${cost} Coins & Unlock` : "Unlock Premium Features"}
+          <Coin size={18} /> {cost > 0 ? `Pay ${cost} Coins & Switch On` : "Switch on Premium Features"}
         </button>
       </div>
     </div>
@@ -2638,13 +2663,16 @@ function DashboardScreenFlow2({
   rate,
   addonActive,
   coins,
-  onOpenUnlockModal,
+  onBuyMoreCapacity,
   onAddLinkGuest,
   onInviteMore,
   onBuyAddon,
   initialTab,
+  onTabChange,
   onBack,
 }) {
+  // The capacity purchase is a screen now, not an overlay, so this component unmounts
+  // whenever the host goes to buy - the active tab has to be lifted or it resets.
   const [tab, setTab] = useState(initialTab || "guests");
   const visible = guestList.slice(0, capacityPaid);
   const hidden = guestList.slice(capacityPaid);
@@ -2681,11 +2709,11 @@ function DashboardScreenFlow2({
       <div className="flex items-center gap-2">
         <AlertTriangle size={16} color={C.red} />
         <p className="text-xs font-semibold" style={{ color: C.red }}>
-          {hidden.length} guest{hidden.length === 1 ? " is" : "s are"} hidden — {hiddenReason}. Unlock to reveal.
+          {hidden.length} guest{hidden.length === 1 ? " is" : "s are"} hidden — {hiddenReason}.
         </p>
       </div>
-      <button onClick={onOpenUnlockModal} className="text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ background: C.navy }}>
-        Unlock
+      <button onClick={onBuyMoreCapacity} className="text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ background: C.navy }}>
+        Buy more capacity
       </button>
     </div>
   );
@@ -2724,7 +2752,10 @@ function DashboardScreenFlow2({
         {tabs.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => {
+              setTab(t.id);
+              onTabChange(t.id);
+            }}
             className="flex items-center gap-2 pb-3 text-sm font-semibold"
             style={{ color: tab === t.id ? C.text : C.muted, borderBottom: tab === t.id ? `2px solid ${C.text}` : "2px solid transparent" }}
           >
@@ -2771,7 +2802,7 @@ function DashboardScreenFlow2({
             </div>
             {hidden.length > 0 && (
               <div className="mt-3">
-                <LockBlur locked label={`${hidden.length} guests hidden — unlock to reveal`} onUpgrade={onOpenUnlockModal}>
+                <LockBlur locked label={`${hidden.length} guests hidden — ${hiddenReason}`} onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
                   <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
                     {hidden.slice(0, 3).map((g) => (
                       <div key={g.id} className="grid grid-cols-3 items-center px-4 py-3 text-sm" style={{ borderTop: `1px solid ${C.border}` }}>
@@ -2823,17 +2854,17 @@ function DashboardScreenFlow2({
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={16} color={C.red} />
                   <p className="text-xs font-semibold" style={{ color: C.red }}>
-                    {hidden.length} guest{hidden.length === 1 ? " is" : "s are"} hidden — {hiddenReason}. Unlock to see your full RSVP summary.
+                    {hidden.length} guest{hidden.length === 1 ? " is" : "s are"} hidden — {hiddenReason}. The summary below only counts the guests you have paid for.
                   </p>
                 </div>
-                <button onClick={onOpenUnlockModal} className="text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ background: C.navy }}>
-                  Unlock
+                <button onClick={onBuyMoreCapacity} className="text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ background: C.navy }}>
+                  Buy more capacity
                 </button>
               </div>
             )}
 
             <div className="grid grid-cols-2 gap-4">
-              <LockBlur locked={locked} label="Unlock to see this." onUpgrade={onOpenUnlockModal}>
+              <LockBlur locked={locked} label="Buy more capacity to see this." onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     RSVP Breakdown
@@ -2852,7 +2883,7 @@ function DashboardScreenFlow2({
                   ))}
                 </div>
               </LockBlur>
-              <LockBlur locked={locked} label="Unlock to see this." onUpgrade={onOpenUnlockModal}>
+              <LockBlur locked={locked} label="Buy more capacity to see this." onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     Guest Overview
@@ -2871,7 +2902,7 @@ function DashboardScreenFlow2({
                   ))}
                 </div>
               </LockBlur>
-              <LockBlur locked={locked} label="Unlock to see this." onUpgrade={onOpenUnlockModal}>
+              <LockBlur locked={locked} label="Buy more capacity to see this." onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     Meal Preferences
@@ -2891,7 +2922,7 @@ function DashboardScreenFlow2({
                   ))}
                 </div>
               </LockBlur>
-              <LockBlur locked={locked} label="Unlock to see this." onUpgrade={onOpenUnlockModal}>
+              <LockBlur locked={locked} label="Buy more capacity to see this." onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     Drink Preferences
@@ -2969,11 +3000,13 @@ function DashboardScreenFlow2({
 }
 
 // ---------- Flow 2 App shell ----------
+const CAPACITY_STEP_PUBLISH = { mode: "publish", back: "editTemplate", next: "live" };
+
 // Every amount deducted here comes from a quote object in src/pricing/policy.js, never an
 // inline n * rate product. You cannot charge a total you did not quote, and a quote always
 // carries its operands so the screen can show the arithmetic.
 function PerInviteApp({ onBackToFlows }) {
-  const [screen, setScreen] = useState("template"); // template | editTemplate | confirm | live | guestManagement | dashboard
+  const [screen, setScreen] = useState("template"); // template | editTemplate | capacity | live | guestManagement | dashboard
   const [dashboardTab, setDashboardTab] = useState("guests");
   const [coins, setCoins] = useState(FLOW2_STARTING_BALANCE);
   const [template, setTemplate] = useState(null);
@@ -2984,7 +3017,8 @@ function PerInviteApp({ onBackToFlows }) {
   const [bulkGuests, setBulkGuests] = useState(0);
   const [linkGuests, setLinkGuests] = useState(0);
 
-  const [capacityModalOpen, setCapacityModalOpen] = useState(false);
+  // Where the capacity step was entered from and where each of its two exits lands.
+  const [capacityStep, setCapacityStep] = useState(CAPACITY_STEP_PUBLISH);
   const [premiumUpgradeModalOpen, setPremiumUpgradeModalOpen] = useState(false);
 
   const [buyCoins, setBuyCoins] = useState({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
@@ -3000,8 +3034,11 @@ function PerInviteApp({ onBackToFlows }) {
   const overflowCount = Math.max(0, totalGuests - capacityPaid);
   const linkPaywalled = capacityPaid === 0;
 
-  const quoteCapacity = (n) => quoteGuests(FLOW2_POLICY, { guests: n, premiumFeatures: addonActive, templateId: template ? template.id : null });
-  const publishQuote = template ? quotePublish(FLOW2_POLICY, { templateId: template.id, premiumFeatures: addonActive, capacity: 0 }) : null;
+  // One bill-builder behind all three capacity modes: a capacity-only bill is the publish
+  // bill with no template line (templateId null prices at 0), so the two can never drift.
+  const quoteCapacityOnly = (n) => quotePublish(FLOW2_POLICY, { templateId: null, premiumFeatures: addonActive, capacity: n });
+  const quotePublishWithCapacity = (n) => quotePublish(FLOW2_POLICY, { templateId: template.id, premiumFeatures: addonActive, capacity: n });
+  const templateOnlyQuote = template ? quotePublish(FLOW2_POLICY, { templateId: template.id, premiumFeatures: addonActive, capacity: 0 }) : null;
   const premiumUpgradeQuote = quotePremiumUpgrade(FLOW2_POLICY, { paidSlots: capacityPaid, templateId: template ? template.id : null });
 
   const handleSelectTemplate = (t) => {
@@ -3012,16 +3049,12 @@ function PerInviteApp({ onBackToFlows }) {
 
   const handleToggleAddon = () => setAddonEnabled((v) => !v);
 
-  const handleFinishEditTemplate = () => {
-    if (template.cost > 0) setScreen("confirm");
-    else setScreen("live");
+  const openCapacityStep = (step) => {
+    setCapacityStep(step);
+    setScreen("capacity");
   };
 
-  const handlePublish = () => {
-    if (coins < publishQuote.total) return;
-    setCoins((c) => c - publishQuote.total);
-    setScreen("live");
-  };
+  const handleFinishEditTemplate = () => openCapacityStep(CAPACITY_STEP_PUBLISH);
 
   // ---- Guest Management: not a payment event. Adding a guest consumes a slot that was ----
   // already bought; a guest with no slot waiting lands in the overflow, same as a link RSVP.
@@ -3042,46 +3075,42 @@ function PerInviteApp({ onBackToFlows }) {
   const handleAddLinkGuest = () => setLinkGuests((n) => n + 1);
 
   // ---- Guest capacity purchase ----
-  const handleSetInitialCapacity = (n) => {
-    const quote = quoteCapacity(n);
-    if (coins < quote.total) return;
-    setCoins((c) => c - quote.total);
-    setCapacityPaid(n);
-    setCapacityModalOpen(false);
-    if (screen === "guestManagement") {
-      setDashboardTab("guests");
-      setScreen("dashboard");
-    }
+  // The bill the screen rendered is the bill that gets charged. Nothing is recomputed here,
+  // so the total on the button and the total deducted cannot disagree. `capacity` is what the
+  // host chose to buy, not the overflow count — they may buy ahead of the guests they have.
+  const handleCapacityPay = (capacity, bill) => {
+    if (coins < bill.total) return;
+    setCoins((c) => c - bill.total);
+    setCapacityPaid((c) => (capacityStep.mode === "topup" ? c + capacity : capacity));
+    setScreen(capacityStep.next);
   };
 
-  // n is what the host chose to buy, not the overflow count — they may buy ahead of the
-  // guests they have.
-  const handleBuyMoreCapacity = (n) => {
-    const quote = quoteCapacity(n);
-    if (coins < quote.total) return;
-    setCoins((c) => c - quote.total);
-    setCapacityPaid((c) => c + n);
-    setCapacityModalOpen(false);
-    if (screen === "guestManagement") {
-      setDashboardTab("guests");
-      setScreen("dashboard");
-    }
-  };
-
-  // "Send Invite" from Guest Management: within the slots already bought, just go to the
-  // dashboard. Over them, route to the capacity purchase — sending is not itself a payment.
-  const handleSendInvite = () => {
-    if (overflowCount > 0) {
-      setCapacityModalOpen(true);
+  // Publish mode only: charge the template alone, leave capacity at 0, and land on the live
+  // screen with the share link still paywalled. This is what keeps that state reachable.
+  const handleCapacitySkip = () => {
+    if (capacityStep.mode !== "publish") {
+      setScreen(capacityStep.back);
       return;
     }
+    if (coins < templateOnlyQuote.total) return;
+    setCoins((c) => c - templateOnlyQuote.total);
+    setScreen("live");
+  };
+
+  // "Send Invite" from Guest Management: within the capacity already bought, just go to the
+  // dashboard. Over it, route to the capacity purchase — sending is not itself a payment.
+  const handleSendInvite = () => {
     setDashboardTab("guests");
+    if (overflowCount > 0) {
+      openCapacityStep({ mode: "topup", back: "guestManagement", next: "dashboard" });
+      return;
+    }
     setScreen("dashboard");
   };
 
-  const handleCopyBlocked = () => setCapacityModalOpen(true);
+  const handleCopyBlocked = () => openCapacityStep({ mode: "activate", back: "live", next: "live" });
 
-  const handleOpenUnlockModal = () => setCapacityModalOpen(true);
+  const handleBuyMoreCapacity = () => openCapacityStep({ mode: "topup", back: "dashboard", next: "dashboard" });
 
   const handleBuyAddon = () => {
     if (capacityPaid === 0) {
@@ -3141,7 +3170,7 @@ function PerInviteApp({ onBackToFlows }) {
     setSelected(new Set());
     setBulkGuests(0);
     setLinkGuests(0);
-    setCapacityModalOpen(false);
+    setCapacityStep(CAPACITY_STEP_PUBLISH);
     setPremiumUpgradeModalOpen(false);
     setBuyCoins({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
     setProfileOpen(false);
@@ -3177,14 +3206,20 @@ function PerInviteApp({ onBackToFlows }) {
         />
       )}
 
-      {screen === "confirm" && template && (
-        <ConfirmPublishScreenFlow2
-          template={template}
-          quote={publishQuote}
-          addonActive={addonActive}
+      {screen === "capacity" && template && (
+        <CapacityScreen
+          mode={capacityStep.mode}
+          rate={rate}
           coins={coins}
-          onPublish={handlePublish}
-          onCancel={() => setScreen("editTemplate")}
+          template={template}
+          paidCapacity={capacityPaid}
+          shortfallGuests={capacityStep.mode === "topup" ? overflowCount : 0}
+          addedGuests={totalGuests}
+          quote={capacityStep.mode === "publish" ? quotePublishWithCapacity : quoteCapacityOnly}
+          presets={FLOW2_POLICY.capacityPresets}
+          onPay={handleCapacityPay}
+          onSkip={handleCapacitySkip}
+          onClose={() => setScreen(capacityStep.back)}
           onTopUp={handleOpenBuyCoins}
         />
       )}
@@ -3225,27 +3260,15 @@ function PerInviteApp({ onBackToFlows }) {
           rate={rate}
           addonActive={addonActive}
           coins={coins}
-          onOpenUnlockModal={handleOpenUnlockModal}
+          onBuyMoreCapacity={handleBuyMoreCapacity}
           onAddLinkGuest={handleAddLinkGuest}
           onInviteMore={() => setScreen("guestManagement")}
           onBuyAddon={handleBuyAddon}
           initialTab={dashboardTab}
+          onTabChange={setDashboardTab}
           onBack={() => setScreen("live")}
         />
       )}
-
-      <GuestCapacityModal
-        open={capacityModalOpen}
-        mode={capacityPaid === 0 ? "initial" : "unlock"}
-        coins={coins}
-        capacityPaid={capacityPaid}
-        overflowCount={overflowCount}
-        quoteCapacity={quoteCapacity}
-        onSetInitial={handleSetInitialCapacity}
-        onUnlock={handleBuyMoreCapacity}
-        onClose={() => setCapacityModalOpen(false)}
-        onTopUp={handleOpenBuyCoins}
-      />
 
       <PremiumFeaturesUpgradeModal
         open={premiumUpgradeModalOpen}
