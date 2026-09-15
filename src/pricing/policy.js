@@ -108,7 +108,7 @@ export function quotePublish(policy, { templateId, premiumFeatures, capacity }) 
   if (capacityAmount > 0) {
     lines.push({
       key: "capacity",
-      label: "Guest capacity",
+      label: "Guests",
       detail:
         guestQuote.discount > 0
           ? `${guests} × ${rate} coins, less ${guestQuote.discount} bulk discount`

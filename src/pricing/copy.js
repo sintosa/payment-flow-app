@@ -1,43 +1,47 @@
-export function flow2FreeTemplateBlurb(policy) {
-  return `A clean, no-frills invite. Guest capacity costs ${policy.baseRate} coins per guest, bought up front — ${policy.premiumFeaturesRate} coins per guest with Premium Features on.`;
+export function flow2FreeTemplateBlurb() {
+  return "A clean, no-frills invite. Everything you need to get people to the party.";
 }
 
-export function flow2PremiumTemplateBlurb(policy) {
-  return `A fully designed premium invite. The template price covers the design — guest capacity is bought separately and up front, ${policy.baseRate} coins per guest same as any template, ${policy.premiumFeaturesRate} with Premium Features on.`;
+export function flow2PremiumTemplateBlurb() {
+  return "A fully designed invite - layered typography, gold foil accents and an animated envelope.";
 }
 
-export function flow2AddonRateChangeNote(policy) {
-  return `Adding Premium Features raises your rate from ${policy.baseRate} to ${policy.premiumFeaturesRate} coins per guest of capacity you buy.`;
-}
-
+// Turning Premium Features on changes what capacity costs from here on, so it is stated
+// on the button that turns it on. Under a bundle the per-guest figure is a starting
+// price, not the price, so the number is dropped rather than quoted wrong.
 export function flow2AddonUpsellNote(policy) {
-  return `Raises your rate to ${policy.premiumFeaturesRate} coins/guest going forward.`;
+  return policy.bundles
+    ? "Guests you pay for after this cost more each."
+    : `Guests you pay for after this cost ${policy.premiumFeaturesRate} coins each.`;
 }
 
-export function flow2TemplateScreenSubtitle(policy) {
-  return `You buy guest capacity up front — ${policy.baseRate} coins/guest on any template, ${policy.premiumFeaturesRate}/guest with Premium Features on.`;
+export function flow2TemplateScreenSubtitle() {
+  return "Pick a design. You choose how many guests you're paying for next.";
 }
 
 export function flow2FlowCardBlurb(policy) {
-  return `Guest capacity is bought up front and the coins leave your balance then — no tiers. Every template is ${policy.baseRate} coins/guest (${policy.premiumFeaturesRate} with Premium Features); the premium template's price buys the design only. The share link stays off until capacity is paid for, and guests past it are hidden until you buy more.`;
+  return `The host pays per guest: ${policy.baseRate} coins each, or ${policy.premiumFeaturesRate} with Premium Features. They choose the number when they publish, and the share link stays off until they do.`;
 }
 
 export function flow2FlowCardPoints(policy) {
   return [
-    `Per-guest coin rate (${policy.baseRate} or ${policy.premiumFeaturesRate}), no guest tiers`,
-    "Host buys guest capacity up front, before the share link works",
-    "Guests past the capacity bought are hidden until you buy more",
+    `${policy.baseRate} coins a guest, ${policy.premiumFeaturesRate} with Premium Features`,
+    "Guests are paid for up front, not as they arrive",
+    "Buy more at any point from the dashboard",
   ];
 }
 
+// Stated as the discount, not as a per-guest price: the engine rounds a purchase up to
+// whole coins, so no host is ever charged the fractional rate a division would produce.
 export function flow3FlowCardBlurb(policy) {
-  return `Identical screens and steps to Flow 2 - same ${policy.baseRate} (or ${policy.premiumFeaturesRate} with Premium Features) coins/guest, same buy-up-front capacity, same no-refund rule. The only difference: buying more capacity at once lowers the price per guest.`;
+  const top = policy.bundles[policy.bundles.length - 1];
+  return `The same screens and the same per-guest pricing as Flow 2, with one difference: paying for more guests at once takes up to ${Math.round(top.discount * 100)}% off the bill.`;
 }
 
 export function flow3FlowCardPoints(policy) {
   return [
-    `Starts from the same per-guest rate (${policy.baseRate} or ${policy.premiumFeaturesRate}) as Flow 2`,
-    "Buying capacity in bulk lowers the price per guest",
-    "Same buy-up-front, no-refund capacity model as Flow 2",
+    `Starts at the same ${policy.baseRate} coins a guest as Flow 2`,
+    `Up to ${Math.round(policy.bundles[policy.bundles.length - 1].discount * 100)}% off at ${policy.bundles[policy.bundles.length - 1].capacity} guests`,
+    "Every other screen is identical to Flow 2",
   ];
 }

@@ -3,7 +3,7 @@
 import { useState, useMemo, useId } from "react";
 import { Lock, ArrowLeft, Check, Users, X, UploadCloud, RotateCcw, PlusCircle, Radio, ListChecks, AlertTriangle, CreditCard, ShieldCheck, Mail, Phone, KeyRound, LogOut, Trash2, UserCircle2, ChevronDown } from "lucide-react";
 import { FLOW2_POLICY, FLOW3_POLICY, FLOW2_STARTING_BALANCE, COIN_PACKS, perGuestRate, buildTemplates, quotePublish, quotePremiumUpgrade } from "@/pricing/policy";
-import { flow2AddonRateChangeNote, flow2AddonUpsellNote, flow2TemplateScreenSubtitle, flow2FlowCardBlurb, flow2FlowCardPoints, flow3FlowCardBlurb, flow3FlowCardPoints } from "@/pricing/copy";
+import { flow2AddonUpsellNote, flow2TemplateScreenSubtitle, flow2FlowCardBlurb, flow2FlowCardPoints, flow3FlowCardBlurb, flow3FlowCardPoints } from "@/pricing/copy";
 
 // ---------- Design tokens (matched to the Airawath Figma file) ----------
 const C = {
@@ -1294,7 +1294,7 @@ function HighlightRow({ title, subtitle }) {
 }
 
 // ---------- Screen 2.75: Invite Live (Figma screen "9") ----------
-function InviteLiveScreen({ template, onOpenGuests, onOpenDashboard, linkLocked = false, onCopyBlocked }) {
+function InviteLiveScreen({ template, onOpenGuests, onOpenDashboard, linkLocked = false, onCopyBlocked, guestsLabel = "Open Guest Management" }) {
   const [copied, setCopied] = useState(false);
   const link = "https://airawath.com/invite/rsvp456";
 
@@ -1326,7 +1326,7 @@ function InviteLiveScreen({ template, onOpenGuests, onOpenDashboard, linkLocked 
           >
             {linkLocked ? (
               <>
-                <Lock size={14} /> Set Guest Capacity
+                <Lock size={14} /> Turn on share link
               </>
             ) : copied ? (
               "Copied!"
@@ -1369,7 +1369,7 @@ function InviteLiveScreen({ template, onOpenGuests, onOpenDashboard, linkLocked 
             className="flex-1 h-11 rounded-xl text-sm font-semibold"
             style={{ border: `1px solid ${C.text}`, color: C.text }}
           >
-            Open Guest Management
+            {guestsLabel}
           </button>
           <button onClick={onOpenDashboard} className="flex-1 h-11 rounded-xl text-sm font-semibold text-white" style={{ background: C.text }}>
             Event Dashboard
@@ -1673,14 +1673,20 @@ function DashboardScreen({
             </button>
           </div>
         ) : (
-          <div className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center" style={{ background: C.bg }}>
+          // The Premium tier bundles Premium Features, so the route out of here already
+          // exists - onUpgrade(2) opens the same tier modal the guest-limit paths use.
+          <div className="rounded-2xl p-10 flex flex-col items-center gap-4 text-center" style={{ background: C.bg }}>
             <Lock size={22} color={C.text} />
             <p className="text-sm" style={{ color: C.text }}>
               Polls, Surveys &amp; Broadcast are Premium Features.
             </p>
-            <p className="text-xs" style={{ color: C.muted }}>
-              Turn this on next time you customize a template, or reach the Premium tier by inviting more guests.
-            </p>
+            <button
+              onClick={() => onUpgrade(2)}
+              className="px-4 py-2 rounded-lg text-white text-sm font-semibold"
+              style={{ background: C.navy }}
+            >
+              Upgrade to Premium
+            </button>
           </div>
         ))}
     </div>
@@ -2009,11 +2015,14 @@ function FlowSelectScreen({ flows, onSelectFlow }) {
                 cursor: f.enabled ? "pointer" : "not-allowed",
               }}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-3">
                 <p className="text-lg font-bold" style={{ color: C.text }}>
                   {f.title}
                 </p>
-                <span className="text-[10px] font-bold uppercase px-2 py-1 rounded-full" style={{ background: f.statusBg, color: f.statusColor }}>
+                <span
+                  className="text-[10px] font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap shrink-0"
+                  style={{ background: f.statusBg, color: f.statusColor }}
+                >
                   {f.status}
                 </span>
               </div>
@@ -2023,8 +2032,8 @@ function FlowSelectScreen({ flows, onSelectFlow }) {
               {f.points.length > 0 && (
                 <ul className="flex flex-col gap-1.5">
                   {f.points.map((p) => (
-                    <li key={p} className="flex items-center gap-2 text-xs" style={{ color: C.text }}>
-                      <Check size={12} color={C.teal} /> {p}
+                    <li key={p} className="flex items-start gap-2 text-xs" style={{ color: C.text }}>
+                      <Check size={12} color={C.teal} className="shrink-0 mt-0.5" /> {p}
                     </li>
                   ))}
                 </ul>
@@ -2141,20 +2150,6 @@ function EditTemplateScreenFlow2({ policy, template, addonEnabled, onToggleAddon
         </div>
 
         <div className="flex flex-col gap-6">
-          <div
-            className="rounded-2xl p-5 flex flex-col gap-3 text-white"
-            style={{ background: "linear-gradient(120deg,#1c385a,#20596a)" }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase font-semibold opacity-80">Per-guest rate</p>
-                <p className="text-3xl font-bold">{rate} coins</p>
-              </div>
-              <Coin size={48} />
-            </div>
-            <CoinBreakdown rows={rateRows} triggerLabel="What makes up this rate" tone="onDark" />
-          </div>
-
           <div>
             <p className="font-semibold mb-3" style={{ color: C.text }}>
               Event basics
@@ -2201,11 +2196,20 @@ function EditTemplateScreenFlow2({ policy, template, addonEnabled, onToggleAddon
               </div>
               <input type="checkbox" checked={addonEnabled} onChange={onToggleAddon} className="shrink-0" />
             </label>
-            {addonEnabled && (
-              <p className="text-xs mt-2" style={{ color: C.muted }}>
-                {flow2AddonRateChangeNote(policy)}
-              </p>
-            )}
+          </div>
+
+          <div
+            className="rounded-2xl p-5 flex flex-col gap-3 text-white"
+            style={{ background: "linear-gradient(120deg,#1c385a,#20596a)" }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase font-semibold opacity-80">Per-guest rate</p>
+                <p className="text-3xl font-bold">{rate} coins</p>
+              </div>
+              <Coin size={48} />
+            </div>
+            <CoinBreakdown rows={rateRows} triggerLabel="What makes up this rate" tone="onDark" />
           </div>
         </div>
       </div>
@@ -2293,29 +2297,30 @@ function CapacityScreen({
   const soleRow = rows.length === 1 ? rows[0] : null;
   const listTotal = bill.originalTotal ?? bill.listTotal ?? total;
 
+  // The charged total is already the largest thing on the screen, directly above the button,
+  // so the button carries the verb only - naming the figure twice reads as two charges.
+  // The only secondary here is publish's, because it does something the primary does not;
+  // "Back" and "Not now" were the header's Back button written a second time.
   const copy = {
     publish: {
       title: "Publish your invite",
-      subtitle: "Choose how many guests you're paying for. Coins leave your balance now.",
-      primary: total > 0 ? `Pay ${total} coins & Publish` : "Publish",
-      secondary: "Publish without a share link for now",
+      primary: "Publish",
+      secondary: "Publish without a share link",
       secondaryNote:
         skipAmount > 0
-          ? `Your invite goes live for ${skipAmount} coins, but the share link stays off until you buy capacity.`
-          : "Your invite goes live free, but the share link stays off until you buy capacity.",
+          ? `Goes live for ${skipAmount} coins. Nobody can RSVP until you pay for guests.`
+          : "Goes live free. Nobody can RSVP until you pay for guests.",
     },
     activate: {
-      title: "Activate your share link",
-      subtitle: "Buy the guest capacity that switches your share link on. Coins leave your balance now.",
-      primary: `Pay ${total} coins & Activate Link`,
-      secondary: "Back",
+      title: "Turn on your share link",
+      primary: "Turn on share link",
+      secondary: null,
       secondaryNote: null,
     },
     topup: {
-      title: "Add guest capacity",
-      subtitle: "Buy more capacity so the rest of your guests can RSVP.",
-      primary: `Pay ${total} coins & Add Capacity`,
-      secondary: "Not now",
+      title: "Pay for more guests",
+      primary: "Add guests",
+      secondary: null,
       secondaryNote: null,
     },
   }[mode];
@@ -2330,14 +2335,9 @@ function CapacityScreen({
 
       <div className="flex justify-center px-6 py-10">
         <div className="bg-white rounded-3xl w-full max-w-md p-8 flex flex-col gap-8" style={{ border: `1px solid ${C.border}` }}>
-          <div>
-            <h2 className="text-2xl font-bold" style={{ color: C.text }}>
-              {copy.title}
-            </h2>
-            <p className="text-sm mt-1.5" style={{ color: C.muted }}>
-              {copy.subtitle}
-            </p>
-          </div>
+          <h2 className="text-2xl font-bold" style={{ color: C.text }}>
+            {copy.title}
+          </h2>
 
           {/* Choosing the amount. One group: label, presets, stepper, and the note that
               explains why the host is here. Separated from the price below by the card gap. */}
@@ -2489,13 +2489,7 @@ function CapacityScreen({
                     : { background: C.bg, color: C.red, borderTop: `1px solid ${C.border}`, cursor: "not-allowed" }
                 }
               >
-                {canPay ? (
-                  <>
-                    <Coin size={18} /> {copy.primary}
-                  </>
-                ) : (
-                  "Not enough coins"
-                )}
+                {canPay ? copy.primary : "Not enough coins"}
               </button>
               {rateRows && (
                 <div className="w-48 mx-auto mt-3">
@@ -2504,16 +2498,22 @@ function CapacityScreen({
               )}
             </div>
 
-            <div className="flex flex-col items-center gap-1 mt-1">
-              <button onClick={onSkip} className="text-sm font-semibold" style={{ color: C.text }}>
-                {copy.secondary}
-              </button>
-              {copy.secondaryNote && (
-                <p className="text-xs text-center" style={{ color: C.muted }}>
-                  {copy.secondaryNote}
-                </p>
-              )}
-            </div>
+            {copy.secondary && (
+              <div className="flex flex-col items-center gap-1 mt-1">
+                <button
+                  onClick={onSkip}
+                  className="text-sm"
+                  style={{ color: C.muted, textDecoration: "underline", textUnderlineOffset: 3 }}
+                >
+                  {copy.secondary}
+                </button>
+                {copy.secondaryNote && (
+                  <p className="text-xs text-center" style={{ color: C.muted }}>
+                    {copy.secondaryNote}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2521,80 +2521,102 @@ function CapacityScreen({
   );
 }
 
-// ---------- Flow 2, Guest Management (no payment event of its own — guests consume slots already bought) ----------
-function GuestManagementScreenFlow2({ selected, onToggleContact, bulkGuests, onBulkAdd, onBulkClear, rate, capacityPaid, overflowCount, onBack, onSendInvite }) {
+// ---------- Flow 2, Guest Management (no payment event of its own — guests draw on capacity already bought) ----------
+// The send action sits under the list it acts on and names the people it will reach, so the
+// count is read off the button rather than off a caption somewhere else on the screen. When
+// the send needs capacity that has not been bought, the button says so instead of jumping
+// the host to a payment screen they did not ask for.
+function GuestManagementScreenFlow2({ selected, onToggleContact, bulkGuests, onBulkAdd, onBulkClear, overflowCount, onBack, onSendInvite }) {
+  const inviteCount = selected.size + bulkGuests;
+  const needsCapacity = overflowCount > 0;
+  const sendLabel =
+    inviteCount === 0
+      ? "Select guests to invite"
+      : `${needsCapacity ? "Pay & send" : "Send"} to ${inviteCount} guest${inviteCount === 1 ? "" : "s"}`;
+
   return (
     <div>
-      <div className="flex items-center justify-between px-8 py-3 border-b" style={{ borderColor: C.border }}>
+      <div className="flex items-center px-8 py-3 border-b" style={{ borderColor: C.border }}>
         <button onClick={onBack} className="flex items-center gap-1 text-sm font-semibold" style={{ color: C.text }}>
           <ArrowLeft size={16} /> Dashboard
         </button>
-        <p className="text-xs font-semibold" style={{ color: C.muted }}>
-          Invite Guests &middot; {rate} coins per slot, bought up front
-        </p>
-        <button onClick={onSendInvite} className="text-sm font-semibold px-4 py-1.5 rounded-lg text-white" style={{ background: C.navy }}>
-          Send Invite
-        </button>
       </div>
 
-      <div className="px-8 py-6 max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-3">
-          <p className="font-semibold" style={{ color: C.text }}>
-            Your Contacts
-          </p>
-          <button
-            onClick={() => onBulkAdd(25)}
-            className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg"
-            style={{ border: `1px solid ${C.border}`, color: C.text }}
-            title="Simulates uploading a large guest list, for testing"
-          >
-            <UploadCloud size={14} /> Bulk upload +25
-          </button>
-        </div>
+      <div className="px-8 py-10 max-w-xl mx-auto flex flex-col gap-5">
+        <h2 className="text-2xl font-bold" style={{ color: C.text }}>
+          Invite guests
+        </h2>
 
-        <div className="rounded-xl px-4 py-3 mb-3 text-xs flex items-center justify-between" style={{ background: C.bg, color: C.text }}>
-          <span>
-            {capacityPaid} slot{capacityPaid === 1 ? "" : "s"} paid for &mdash; guests added here use the same slots as
-            link RSVPs.
-          </span>
-          {overflowCount > 0 && (
-            <span className="flex items-center gap-1 font-semibold" style={{ color: C.navy }}>
-              <Coin size={14} /> {overflowCount} past capacity &middot; buy more slots to cover them
-            </span>
-          )}
-        </div>
-
-        {bulkGuests > 0 && (
-          <div className="flex items-center justify-between text-xs mb-3 px-3 py-2 rounded-lg" style={{ background: C.tealLight, color: C.teal }}>
-            <span>{bulkGuests} guests added via bulk upload</span>
-            <button onClick={onBulkClear} className="underline">
-              Clear
+        <div className="flex flex-col gap-3">
+          <div className="flex items-baseline justify-between gap-4">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
+              Your contacts
+            </p>
+            <button
+              onClick={() => onBulkAdd(25)}
+              className="flex items-center gap-1 text-xs"
+              style={{ color: C.muted, textDecoration: "underline", textUnderlineOffset: 3 }}
+              title="Simulates uploading a large guest list, for testing"
+            >
+              <UploadCloud size={12} /> Add 25 test guests
             </button>
           </div>
-        )}
 
-        <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
-          {CONTACTS.map((c) => {
-            const checked = selected.has(c.id);
-            return (
-              <label
-                key={c.id}
-                className="flex items-center gap-3 px-4 py-3 cursor-pointer"
-                style={{ borderBottom: `1px solid ${C.border}` }}
-              >
-                <input type="checkbox" checked={checked} onChange={() => onToggleContact(c.id)} />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold" style={{ color: C.text }}>
-                    {c.name}
-                  </p>
-                  <p className="text-xs" style={{ color: C.muted }}>
-                    {c.email}
-                  </p>
-                </div>
-                {checked && <Check size={16} color={C.green} />}
-              </label>
-            );
-          })}
+          <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
+            {CONTACTS.map((c, i) => {
+              const checked = selected.has(c.id);
+              return (
+                <label
+                  key={c.id}
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer"
+                  style={{
+                    borderTop: i === 0 ? "none" : `1px solid ${C.border}`,
+                    background: checked ? C.tealLight : "white",
+                  }}
+                >
+                  <input type="checkbox" checked={checked} onChange={() => onToggleContact(c.id)} />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold" style={{ color: C.text }}>
+                      {c.name}
+                    </p>
+                    <p className="text-xs" style={{ color: C.muted }}>
+                      {c.email}
+                    </p>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+
+          {bulkGuests > 0 && (
+            <div className="flex items-center justify-between text-xs" style={{ color: C.muted }}>
+              <span>
+                Plus {bulkGuests} test guest{bulkGuests === 1 ? "" : "s"}
+              </span>
+              <button onClick={onBulkClear} style={{ textDecoration: "underline", textUnderlineOffset: 3 }}>
+                Remove
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* The contact list is longer than the viewport, so the action it feeds is pinned
+          rather than left at the bottom of a scroll nobody finishes. */}
+      <div className="sticky bottom-0 px-8 py-4 border-t" style={{ background: "white", borderColor: C.border }}>
+        <div className="max-w-xl mx-auto">
+          <button
+            onClick={() => inviteCount > 0 && onSendInvite()}
+            disabled={inviteCount === 0}
+            className="w-full h-12 rounded-xl font-semibold"
+            style={
+              inviteCount === 0
+                ? { background: C.bg, color: C.muted, border: `1px solid ${C.border}`, cursor: "not-allowed" }
+                : { background: C.navy, color: "white", cursor: "pointer" }
+            }
+          >
+            {sendLabel}
+          </button>
         </div>
       </div>
     </div>
@@ -2607,7 +2629,6 @@ function DashboardScreenFlow2({
   template,
   guestList,
   capacityPaid,
-  rate,
   addonActive,
   coins,
   onBuyMoreCapacity,
@@ -2616,7 +2637,6 @@ function DashboardScreenFlow2({
   onBuyAddon,
   onTopUp,
   upgradeQuote,
-  rateRows = null,
   initialTab,
   onTabChange,
   onBack,
@@ -2633,40 +2653,25 @@ function DashboardScreenFlow2({
     { id: "broadcast", label: "Broadcast", icon: Radio },
   ];
 
+  // Prototype-only affordance. Styled down to a caption so it does not read as one of the
+  // host's own actions - it sits on the host's screen only because there is no real guest.
   const TestEdgeCasePanel = (
-    <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl mb-4" style={{ background: "#fdf0ff", border: "1px dashed #b34fd6" }}>
-      <div>
-        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#8a2ba8" }}>
-          Test edge case
-        </p>
-        <p className="text-xs" style={{ color: "#5c1c73" }}>
-          Simulate a guest RSVPing on their own via the public share link.
-        </p>
-      </div>
-      <button onClick={onAddLinkGuest} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-xs font-bold whitespace-nowrap" style={{ background: "#b34fd6" }}>
-        🔗 +1 Guest via Link
+    <div className="flex items-center gap-2 mb-4 text-xs" style={{ color: C.muted }}>
+      <span>Prototype:</span>
+      <button
+        onClick={onAddLinkGuest}
+        className="font-semibold"
+        style={{ color: C.muted, textDecoration: "underline", textUnderlineOffset: 3 }}
+        title="Simulates a guest RSVPing on their own via the public share link"
+      >
+        +1 Guest via Link
       </button>
     </div>
   );
 
-  // One reason is the only reason left. Capacity is paid for up front, so a guest can never
-  // be hidden because the balance happened to be low when they arrived — either a paid slot
-  // was waiting for them or it wasn't.
-  const hiddenReason = hidden.length === 0 ? "" : `past the ${capacityPaid} slot${capacityPaid === 1 ? "" : "s"} you've paid for`;
-
-  const HiddenBanner = hidden.length > 0 && (
-    <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl mb-4" style={{ background: "#ffebea" }}>
-      <div className="flex items-center gap-2">
-        <AlertTriangle size={16} color={C.red} />
-        <p className="text-xs font-semibold" style={{ color: C.red }}>
-          {hidden.length} guest{hidden.length === 1 ? " is" : "s are"} hidden — {hiddenReason}.
-        </p>
-      </div>
-      <button onClick={onBuyMoreCapacity} className="text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ background: C.navy }}>
-        Buy more capacity
-      </button>
-    </div>
-  );
+  // Stated once per tab, over the thing it is withholding - not as a standing banner above
+  // the tabs as well. The host cannot act on it anywhere except the button it is attached to.
+  const hiddenLabel = `${hidden.length} guest${hidden.length === 1 ? "" : "s"} you haven't paid for`;
 
   return (
     <div className="px-8 py-6">
@@ -2674,32 +2679,17 @@ function DashboardScreenFlow2({
         <button onClick={onBack} className="flex items-center gap-1 text-sm font-semibold" style={{ color: C.text }}>
           <ArrowLeft size={16} /> Back
         </button>
-        <div className="flex flex-col items-end gap-1.5">
-          <div className="flex items-center gap-3">
-            <span
-              className="text-xs font-semibold px-3 py-1 rounded-full"
-              style={{ background: template.id === "premium" ? "#e2d9fe" : C.tealLight, color: template.id === "premium" ? "#4a3292" : C.teal }}
-            >
-              {template.tag} &middot; {rate} coins/guest
-            </span>
-            <div className="flex items-center gap-2 text-xs" style={{ color: C.muted }}>
-              <Coin size={16} /> {coins} coins available
-            </div>
-          </div>
-          <CoinBreakdown rows={rateRows} triggerLabel="Why this rate" align="end" />
-        </div>
+        <span
+          className="text-xs font-semibold px-3 py-1 rounded-full"
+          style={{ background: template.id === "premium" ? "#e2d9fe" : C.tealLight, color: template.id === "premium" ? "#4a3292" : C.teal }}
+        >
+          {template.name}
+        </span>
       </div>
 
-      <div className="rounded-2xl px-5 py-3 mb-6 flex items-center justify-between text-white" style={{ background: "linear-gradient(90deg,#4a3292,#4a3292)" }}>
-        <p className="text-sm font-semibold">
-          {guestList.length} total RSVP{guestList.length === 1 ? "" : "s"}
-        </p>
-        <button onClick={onInviteMore} className="bg-white text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ color: C.text }}>
-          Invite More Guests
-        </button>
-      </div>
-
-      {HiddenBanner}
+      <h2 className="text-2xl font-bold mb-6" style={{ color: C.text }}>
+        {guestList.length} guest{guestList.length === 1 ? "" : "s"}
+      </h2>
 
       <div className="flex gap-6 border-b mb-6" style={{ borderColor: C.border }}>
         {tabs.map((t) => (
@@ -2724,19 +2714,25 @@ function DashboardScreenFlow2({
             <div className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center" style={{ background: C.bg }}>
               <Users size={22} color={C.text} />
               <p className="text-sm" style={{ color: C.text }}>
-                No guests have RSVP'd yet — share your invite link or add guests directly.
+                Nobody has RSVP&apos;d yet. Share your link, or invite people from your contacts.
               </p>
               <button onClick={onInviteMore} className="px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{ background: C.navy }}>
-                Invite Guests
+                Invite guests
               </button>
             </div>
           </div>
         ) : (
           <div>
             {TestEdgeCasePanel}
-            <p className="font-semibold mb-3" style={{ color: C.text }}>
-              Guest List &middot; {guestList.length} total
-            </p>
+            <div className="flex justify-end mb-3">
+              <button
+                onClick={onInviteMore}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                style={{ border: `1px solid ${C.border}`, color: C.text }}
+              >
+                Invite more guests
+              </button>
+            </div>
             <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
               <div className="grid grid-cols-3 px-4 py-3 text-xs font-semibold" style={{ background: C.bg, color: C.muted }}>
                 <span>Full Name</span>
@@ -2755,7 +2751,7 @@ function DashboardScreenFlow2({
             </div>
             {hidden.length > 0 && (
               <div className="mt-3">
-                <LockBlur locked label={`${hidden.length} guests hidden — ${hiddenReason}`} onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
+                <LockBlur locked label={hiddenLabel} onUpgrade={onBuyMoreCapacity} actionLabel={`Pay for ${hidden.length} more`}>
                   <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
                     {hidden.slice(0, 3).map((g) => (
                       <div key={g.id} className="grid grid-cols-3 items-center px-4 py-3 text-sm" style={{ borderTop: `1px solid ${C.border}` }}>
@@ -2798,26 +2794,8 @@ function DashboardScreenFlow2({
 
         return (
           <div className="flex flex-col gap-4">
-            <p className="font-semibold" style={{ color: C.text }}>
-              {guestList.length} Total Guests
-            </p>
-
-            {locked && (
-              <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl" style={{ background: "#ffebea" }}>
-                <div className="flex items-center gap-2">
-                  <AlertTriangle size={16} color={C.red} />
-                  <p className="text-xs font-semibold" style={{ color: C.red }}>
-                    {hidden.length} guest{hidden.length === 1 ? " is" : "s are"} hidden — {hiddenReason}. The summary below only counts the guests you have paid for.
-                  </p>
-                </div>
-                <button onClick={onBuyMoreCapacity} className="text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ background: C.navy }}>
-                  Buy more capacity
-                </button>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <LockBlur locked={locked} label="Buy more capacity to see this." onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
+            <LockBlur locked={locked} label={hiddenLabel} onUpgrade={onBuyMoreCapacity} actionLabel={`Pay for ${hidden.length} more`}>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     RSVP Breakdown
@@ -2835,8 +2813,6 @@ function DashboardScreenFlow2({
                     </div>
                   ))}
                 </div>
-              </LockBlur>
-              <LockBlur locked={locked} label="Buy more capacity to see this." onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     Guest Overview
@@ -2854,8 +2830,6 @@ function DashboardScreenFlow2({
                     </div>
                   ))}
                 </div>
-              </LockBlur>
-              <LockBlur locked={locked} label="Buy more capacity to see this." onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     Meal Preferences
@@ -2874,8 +2848,6 @@ function DashboardScreenFlow2({
                     </div>
                   ))}
                 </div>
-              </LockBlur>
-              <LockBlur locked={locked} label="Buy more capacity to see this." onUpgrade={onBuyMoreCapacity} actionLabel="Buy more capacity">
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     Drink Preferences
@@ -2894,8 +2866,8 @@ function DashboardScreenFlow2({
                     </div>
                   ))}
                 </div>
-              </LockBlur>
-            </div>
+              </div>
+            </LockBlur>
 
             <div className="rounded-2xl p-5" style={{ background: C.bg }}>
               <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
@@ -2936,20 +2908,20 @@ function DashboardScreenFlow2({
           </div>
         ) : (() => {
           // Switching Premium Features on after capacity is bought is a real charge: the
-          // slots already paid for went through at the base rate. The cost is stated here,
+          // guests already paid for went through at the base rate. The cost is stated here,
           // where the host turns it on, instead of in a modal - but it is still one explicit
           // click on a button that names the price, same consent standard as CapacityScreen.
-          const { paidSlots, newRate, paidTotal, upgradedTotal, total: upgradeCost } = upgradeQuote;
+          const { paidSlots, paidTotal, upgradedTotal, total: upgradeCost } = upgradeQuote;
           const canPay = coins >= upgradeCost;
           const shortfall = Math.max(0, upgradeCost - coins);
-          // Totals, not per-slot rates. Under a bulk discount the slots already bought did
-          // not go through at the list rate, and a per-slot figure for them is a fraction
+          // Totals, not per-guest rates. Under a bulk discount the guests already bought did
+          // not go through at the list rate, and a per-guest figure for them is a fraction
           // that contradicts the host's own receipt.
-          const slotLabel = `${paidSlots} slot${paidSlots === 1 ? "" : "s"}`;
+          const paidLabel = `${paidSlots} guest${paidSlots === 1 ? "" : "s"}`;
           const upgradeRows = [
-            { label: `${slotLabel} with Premium Features`, amount: upgradedTotal },
-            { label: `${slotLabel} already paid for`, amount: `-${paidTotal}` },
-            { label: "Switch on now", amount: upgradeCost, total: true },
+            { label: `${paidLabel} with Premium Features`, amount: upgradedTotal },
+            { label: `${paidLabel} already paid for`, amount: `-${paidTotal}` },
+            { label: "You pay", amount: upgradeCost, total: true },
           ];
 
           return (
@@ -2961,46 +2933,51 @@ function DashboardScreenFlow2({
 
               {upgradeCost > 0 ? (
                 <>
-                  <div className="bg-white rounded-2xl px-5 py-4 w-full max-w-sm flex flex-col gap-2 text-left">
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-sm" style={{ color: C.text }}>
-                        Switch on now
-                      </span>
-                      <span className="flex items-center gap-2 text-xl font-bold whitespace-nowrap" style={{ color: C.navy }}>
-                        <Coin size={20} /> {upgradeCost}
-                      </span>
+                  <div className="bg-white rounded-2xl p-5 w-full max-w-sm flex flex-col gap-4 text-left">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-sm" style={{ color: C.text }}>
+                          Premium Features
+                        </span>
+                        <span className="flex items-center gap-2 text-xl font-bold whitespace-nowrap" style={{ color: C.navy }}>
+                          <Coin size={20} /> {upgradeCost}
+                        </span>
+                      </div>
+                      <CoinBreakdown rows={upgradeRows} />
                     </div>
-                    <CoinBreakdown rows={upgradeRows} />
-                  </div>
 
-                  {!canPay && (
-                    <div
-                      className="rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3 w-full max-w-sm"
-                      style={{ background: "#fdeceb", color: C.red }}
-                    >
-                      <span>
-                        You&apos;re short {shortfall} coin{shortfall === 1 ? "" : "s"}.
-                      </span>
-                      <button
-                        onClick={() => onTopUp(shortfall)}
-                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
-                        style={{ background: C.gold }}
+                    {!canPay && (
+                      <div
+                        className="rounded-t-xl px-4 py-3 text-sm flex items-center justify-between gap-3"
+                        style={{ background: "#fdeceb", color: C.red }}
                       >
-                        <CreditCard size={14} /> Buy Coins
-                      </button>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() => canPay && onBuyAddon()}
-                    disabled={!canPay}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold"
-                    style={{ background: canPay ? C.navy : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
-                  >
-                    <Coin size={16} /> Pay {upgradeCost} coins &amp; Switch On
-                  </button>
+                        <span>
+                          You&apos;re short {shortfall} coin{shortfall === 1 ? "" : "s"}.
+                        </span>
+                        <button
+                          onClick={() => onTopUp(shortfall)}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
+                          style={{ background: C.gold }}
+                        >
+                          <CreditCard size={14} /> Buy Coins
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => canPay && onBuyAddon()}
+                      disabled={!canPay}
+                      className={`w-full h-12 font-semibold flex items-center justify-center gap-2 ${canPay ? "rounded-xl" : "rounded-b-xl"}`}
+                      style={
+                        canPay
+                          ? { background: C.navy, color: "white", cursor: "pointer" }
+                          : { background: C.bg, color: C.red, borderTop: `1px solid ${C.border}`, cursor: "not-allowed" }
+                      }
+                    >
+                      {canPay ? "Switch on Premium Features" : "Not enough coins"}
+                    </button>
+                  </div>
                   <p className="text-xs" style={{ color: C.muted }}>
-                    Slots you buy later cost {newRate} coins.
+                    {flow2AddonUpsellNote(policy)}
                   </p>
                 </>
               ) : (
@@ -3049,7 +3026,6 @@ function PerInviteApp({ policy, flowLabel, onBackToFlows }) {
   const [profileOpen, setProfileOpen] = useState(false);
 
   const templates = buildTemplates(policy);
-  const rate = getPerInviteRate(policy, template, addonEnabled);
   const guestList = useMemo(() => buildGuestList(selected, bulkGuests, linkGuests), [selected, bulkGuests, linkGuests]);
   const addonActive = template ? addonEnabled : false;
 
@@ -3259,6 +3235,7 @@ function PerInviteApp({ policy, flowLabel, onBackToFlows }) {
           template={template}
           linkLocked={linkPaywalled}
           onCopyBlocked={handleCopyBlocked}
+          guestsLabel="Invite guests"
           onOpenGuests={() => setScreen("guestManagement")}
           onOpenDashboard={() => {
             setDashboardTab("rsvp");
@@ -3274,8 +3251,6 @@ function PerInviteApp({ policy, flowLabel, onBackToFlows }) {
           bulkGuests={bulkGuests}
           onBulkAdd={handleBulkAdd}
           onBulkClear={handleBulkClear}
-          rate={rate}
-          capacityPaid={capacityPaid}
           overflowCount={overflowCount}
           onBack={() => setScreen("dashboard")}
           onSendInvite={handleSendInvite}
@@ -3288,7 +3263,6 @@ function PerInviteApp({ policy, flowLabel, onBackToFlows }) {
           template={template}
           guestList={guestList}
           capacityPaid={capacityPaid}
-          rate={rate}
           addonActive={addonActive}
           coins={coins}
           onBuyMoreCapacity={handleBuyMoreCapacity}
@@ -3297,7 +3271,6 @@ function PerInviteApp({ policy, flowLabel, onBackToFlows }) {
           onBuyAddon={handleBuyAddon}
           onTopUp={handleOpenBuyCoins}
           upgradeQuote={premiumUpgradeQuote}
-          rateRows={rateBreakdownRows}
           initialTab={dashboardTab}
           onTabChange={setDashboardTab}
           onBack={() => setScreen("live")}
