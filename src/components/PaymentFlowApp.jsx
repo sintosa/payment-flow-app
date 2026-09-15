@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { Lock, ArrowLeft, Check, Users, X, UploadCloud, RotateCcw, PlusCircle, Radio, ListChecks, AlertTriangle, CreditCard, ShieldCheck, Mail, Phone, KeyRound, LogOut, Trash2, UserCircle2 } from "lucide-react";
+import { FLOW2_POLICY, STARTING_BALANCE, COIN_PACKS, perGuestRate, buildTemplates } from "@/pricing/policy";
+import { flow2PremiumFeaturesIncludedNote, flow2AddonRateChangeNote, flow2AddonUpsellNote, flow2TemplateScreenSubtitle } from "@/pricing/copy";
 
 // ---------- Design tokens (matched to the Airawath Figma file) ----------
 const C = {
@@ -40,12 +42,6 @@ const Coin = ({ size = 16, style = {} }) => (
 );
 
 // ---------- Mock guest directory ----------
-const COIN_PACKS = [
-  { coins: 100, price: "$4.99", perCoin: "$0.05 / coin" },
-  { coins: 250, price: "$9.99", perCoin: "$0.04 / coin" },
-  { coins: 500, price: "$14.99", perCoin: "$0.03 / coin", badge: "Best Value" },
-];
-
 const CONTACTS = [
   { id: 1, name: "Meera Nair", phone: "+91 98450 11234", email: "meera.n@gmail.com" },
   { id: 2, name: "Rohan Gupta", phone: "+91 90080 22345", email: "rohan.g@outlook.com" },
@@ -76,22 +72,7 @@ const TEMPLATES = [
   },
 ];
 
-const TEMPLATES_FLOW2 = [
-  {
-    id: "free",
-    name: "Simple Get-Together",
-    tag: "Free template",
-    cost: 0,
-    blurb: "A clean, no-frills invite. Costs 2 coins per guest who RSVPs — 5 coins per guest if you add Premium Features.",
-  },
-  {
-    id: "premium",
-    name: "Golden Hour Soiree",
-    tag: "Premium template",
-    cost: 60,
-    blurb: "A fully designed premium invite. Premium Features are included free, and it's a flat 2 coins per guest — no rate jump.",
-  },
-];
+const TEMPLATES_FLOW2 = buildTemplates(FLOW2_POLICY);
 
 const TIER_CARDS = [
   { level: 0, label: "FREE", cost: 0, range: "0–50 guests", benefit: "Create your event and invite up to 50 guests for free." },
@@ -1752,7 +1733,7 @@ function DashboardScreen({
 function TierBasedApp({ onBackToFlows }) {
   const [screen, setScreen] = useState("template"); // template | editTemplate | confirm | live | dashboard | guestManagement
   const [dashboardTab, setDashboardTab] = useState("guests");
-  const [coins, setCoins] = useState(100);
+  const [coins, setCoins] = useState(STARTING_BALANCE);
   const [template, setTemplate] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [bulkGuests, setBulkGuests] = useState(0);
@@ -1862,7 +1843,7 @@ function TierBasedApp({ onBackToFlows }) {
   const handleReset = () => {
     setScreen("template");
     setDashboardTab("guests");
-    setCoins(100);
+    setCoins(STARTING_BALANCE);
     setTemplate(null);
     setSelected(new Set());
     setBulkGuests(0);
@@ -2163,9 +2144,7 @@ function FlowSelectScreen({ onSelectFlow }) {
 // =====================================================================
 
 function getFlow2Rate(template, addonEnabled) {
-  if (!template) return 2;
-  if (template.id === "premium") return 2;
-  return addonEnabled ? 5 : 2;
+  return perGuestRate(FLOW2_POLICY, { premiumFeatures: addonEnabled, templateId: template ? template.id : null });
 }
 
 // ---------- Flow 2, Screen 2: Edit Template ----------
@@ -2246,7 +2225,7 @@ function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onCont
                     Premium Features included
                   </p>
                   <p className="text-xs" style={{ color: "#4a3292" }}>
-                    Polls, Surveys &amp; Broadcast included free. Rate stays 2 coins/guest.
+                    {flow2PremiumFeaturesIncludedNote(FLOW2_POLICY)}
                   </p>
                 </div>
               </div>
@@ -2271,7 +2250,7 @@ function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onCont
             )}
             {template.id !== "premium" && addonEnabled && (
               <p className="text-xs mt-2" style={{ color: C.muted }}>
-                Adding Premium Features raises your rate from 2 to 5 coins per guest who RSVPs.
+                {flow2AddonRateChangeNote(FLOW2_POLICY)}
               </p>
             )}
           </div>
@@ -2373,7 +2352,7 @@ function GuestCapacityModal({ open, mode, rate, coins, guestCapacity, hiddenCoun
   const [draft, setDraft] = useState(guestCapacity || 25);
   if (!open) return null;
 
-  const presets = [10, 25, 50, 100, 250];
+  const presets = FLOW2_POLICY.capacityPresets;
   const unlockCost = hiddenCount * rate;
   const canUnlock = coins >= unlockCost;
   const shortfall = Math.max(0, unlockCost - coins);
@@ -2988,7 +2967,7 @@ function DashboardScreenFlow2({
               <Coin size={16} /> Switch on Premium Features
             </button>
             <p className="text-xs" style={{ color: C.muted }}>
-              Raises your rate to 5 coins/guest going forward (free templates only).
+              {flow2AddonUpsellNote(FLOW2_POLICY)}
             </p>
           </div>
         ))}
@@ -3000,7 +2979,7 @@ function DashboardScreenFlow2({
 function PerInviteApp({ onBackToFlows }) {
   const [screen, setScreen] = useState("template"); // template | editTemplate | confirm | live | guestManagement | dashboard
   const [dashboardTab, setDashboardTab] = useState("guests");
-  const [coins, setCoins] = useState(100);
+  const [coins, setCoins] = useState(STARTING_BALANCE);
   const [template, setTemplate] = useState(null);
   const [addonEnabled, setAddonEnabled] = useState(false);
 
@@ -3186,7 +3165,7 @@ function PerInviteApp({ onBackToFlows }) {
   const handleReset = () => {
     setScreen("template");
     setDashboardTab("guests");
-    setCoins(100);
+    setCoins(STARTING_BALANCE);
     setTemplate(null);
     setAddonEnabled(false);
     setGuestCapacity(0);
@@ -3218,7 +3197,7 @@ function PerInviteApp({ onBackToFlows }) {
           coins={coins}
           onSelect={handleSelectTemplate}
           templates={TEMPLATES_FLOW2}
-          subtitle="Every guest who RSVPs costs coins — Free templates are 2/guest (5 with Premium Features), Premium templates are always 2/guest."
+          subtitle={flow2TemplateScreenSubtitle(FLOW2_POLICY)}
         />
       )}
 
