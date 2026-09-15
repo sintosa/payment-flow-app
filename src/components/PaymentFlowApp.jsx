@@ -2223,7 +2223,7 @@ function EditTemplateScreenFlow2({ policy, template, addonEnabled, onToggleAddon
 // being asked to approve this second, and it disappears the moment there is nothing to charge.
 //
 // Prices never come from this file. `quote(capacity)` is a prop and is the only source of
-// the bill; `rate` is display-only, for the arithmetic sub-label.
+// the bill, including the per-guest arithmetic, which is stated once on the row it explains.
 //
 //   quote(capacity) -> {
 //     rows:  [{ id, label, detail?, amount, originalAmount? }],
@@ -2238,7 +2238,6 @@ function EditTemplateScreenFlow2({ policy, template, addonEnabled, onToggleAddon
 // discounted flow being added later, so the payment step does not have to be reopened.
 function CapacityScreen({
   mode,
-  rate,
   coins,
   template = null,
   paidCapacity = 0,
@@ -2278,8 +2277,9 @@ function CapacityScreen({
   const canPay = coins >= total;
   const coinShortfall = Math.max(0, total - coins);
 
-  const capacityRow = rows.find((r) => r.id === "capacity");
-  const capacityAmount = capacityRow ? capacityRow.amount : draft * rate;
+  // One row is its own total, so it is rendered as the total rather than itemised above one.
+  const soleRow = rows.length === 1 ? rows[0] : null;
+  const listTotal = rows.reduce((sum, r) => sum + (r.originalAmount ?? r.amount), 0);
 
   const templateCost = template ? template.cost : 0;
 
@@ -2319,159 +2319,189 @@ function CapacityScreen({
       </div>
 
       <div className="flex justify-center px-6 py-10">
-        <div className="bg-white rounded-3xl w-full max-w-md p-8 flex flex-col gap-5">
+        <div className="bg-white rounded-3xl w-full max-w-md p-8 flex flex-col gap-8" style={{ border: `1px solid ${C.border}` }}>
           <div>
             <h2 className="text-2xl font-bold" style={{ color: C.text }}>
               {copy.title}
             </h2>
-            <p className="text-sm mt-1" style={{ color: C.muted }}>
+            <p className="text-sm mt-1.5" style={{ color: C.muted }}>
               {copy.subtitle}
             </p>
           </div>
 
-          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
-            Guests you&apos;re paying for
-          </p>
-
-          {/* Preset row - markup carried over from GuestCapacityModal unchanged. */}
-          <div className="flex flex-wrap gap-2">
-            {presets.map((p) => (
-              <button
-                key={p}
-                onClick={() => setDraft(p)}
-                className="px-4 py-2 rounded-lg text-sm font-semibold"
-                style={{ background: draft === p ? C.navy : C.bg, color: draft === p ? "white" : C.text }}
-              >
-                {p} guests
-              </button>
-            ))}
-          </div>
-
-          {/* Stepper - markup carried over from GuestCapacityModal unchanged. */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setDraft((d) => Math.max(1, d - 5))}
-              className="w-10 h-10 rounded-lg font-bold text-lg"
-              style={{ border: `1px solid ${C.border}`, color: C.text }}
-            >
-              &minus;
-            </button>
-            <input
-              type="number"
-              value={draft}
-              onChange={(e) => setDraft(Math.max(1, Number(e.target.value) || 1))}
-              className="flex-1 h-10 rounded-lg text-center font-bold text-lg"
-              style={{ border: `1px solid ${C.border}`, color: C.text }}
-            />
-            <button
-              onClick={() => setDraft((d) => d + 5)}
-              className="w-10 h-10 rounded-lg font-bold text-lg"
-              style={{ border: `1px solid ${C.border}`, color: C.text }}
-            >
-              +
-            </button>
-          </div>
-
-          {shortfallGuests > 0 && addedGuests > 0 && (
-            <p className="text-sm" style={{ color: C.text }}>
-              You&apos;ve added {addedGuests} guest{addedGuests === 1 ? "" : "s"} and paid for {paidCapacity}.
+          {/* Choosing the amount. One group: label, presets, stepper, and the note that
+              explains why the host is here. Separated from the price below by the card gap. */}
+          <div className="flex flex-col gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
+              Guests you&apos;re paying for
             </p>
-          )}
 
-          {/* Itemised bill. Rule and total render only when there are two or more rows. */}
-          {rows.length > 0 && (
-          <div className="rounded-2xl p-5 flex flex-col gap-3" style={{ background: C.bg }}>
-            {rows.map((row) => (
-              <div key={row.id} className="flex items-baseline justify-between gap-4">
-                <div>
-                  <p className="text-sm" style={{ color: C.text }}>
-                    {row.label}
-                  </p>
-                  {row.detail && (
-                    <p className="text-xs mt-0.5" style={{ color: C.muted }}>
-                      {row.detail}
-                    </p>
-                  )}
-                </div>
-                <span
-                  className="flex items-baseline gap-2 text-sm font-semibold whitespace-nowrap"
-                  style={{ color: C.text }}
+            {/* Five equal choices, five equal columns. The label above carries the noun so the
+                buttons carry only the number and the row never wraps. */}
+            <div className="grid grid-cols-5 gap-2">
+              {presets.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setDraft(p)}
+                  className="h-10 rounded-xl text-sm font-semibold"
+                  style={{ background: draft === p ? C.navy : C.bg, color: draft === p ? "white" : C.text }}
                 >
-                  {row.originalAmount > row.amount && (
-                    <span style={{ color: C.muted, textDecoration: "line-through" }}>{row.originalAmount}</span>
-                  )}
-                  <span>{row.amount}</span>
-                </span>
-              </div>
-            ))}
+                  {p}
+                </button>
+              ))}
+            </div>
 
-            {rows.length > 1 && (
-              <>
-                <div style={{ borderTop: `1px solid ${C.border}` }} />
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-sm font-bold" style={{ color: C.text }}>
-                    Total
-                  </span>
-                  <span
-                    className="flex items-center gap-2 text-xl font-bold whitespace-nowrap"
-                    style={{ color: C.navy }}
-                  >
-                    <Coin size={20} /> {total}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-          )}
-
-          {!canPay && (
-            <div
-              className="rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3"
-              style={{ background: "#fdeceb", color: C.red }}
-            >
-              <span>
-                You&apos;re short {coinShortfall} coin{coinShortfall === 1 ? "" : "s"}.
-              </span>
+            {/* One control, not three. The wrapper owns the outline; the children own the
+                dividers. The native spinner is suppressed - the buttons are the spinner. */}
+            <div className="flex items-stretch h-12 rounded-xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
               <button
-                onClick={() => onTopUp(coinShortfall)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
-                style={{ background: C.gold }}
+                onClick={() => setDraft((d) => Math.max(1, d - 5))}
+                aria-label="Fewer guests"
+                className="w-12 shrink-0 font-bold text-lg"
+                style={{ color: C.text, borderRight: `1px solid ${C.border}` }}
               >
-                <CreditCard size={14} /> Buy Coins
+                &minus;
+              </button>
+              <input
+                type="number"
+                value={draft}
+                onChange={(e) => setDraft(Math.max(1, Number(e.target.value) || 1))}
+                aria-label="Guests you are paying for"
+                className="flex-1 min-w-0 text-center font-bold text-lg bg-transparent focus-visible:outline-2 focus-visible:outline-offset-[-3px] [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0"
+                style={{ color: C.text, outlineColor: C.navy }}
+              />
+              <button
+                onClick={() => setDraft((d) => d + 5)}
+                aria-label="More guests"
+                className="w-12 shrink-0 font-bold text-lg"
+                style={{ color: C.text, borderLeft: `1px solid ${C.border}` }}
+              >
+                +
               </button>
             </div>
-          )}
 
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={() => canPay && onPay(draft, bill)}
-              disabled={!canPay}
-              className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
-              style={{ background: canPay ? C.navy : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
-            >
-              <Coin size={18} /> {copy.primary}
-            </button>
-            {capacityAmount === draft * rate && (
-              <p className="text-xs text-center" style={{ color: C.muted }}>
-                {draft} guest{draft === 1 ? "" : "s"} &times; {rate} coin{rate === 1 ? "" : "s"} = {capacityAmount} coins
+            {shortfallGuests > 0 && addedGuests > 0 && (
+              <p className="text-sm" style={{ color: C.muted }}>
+                You&apos;ve added {addedGuests} guest{addedGuests === 1 ? "" : "s"} and paid for {paidCapacity}.
               </p>
-            )}
-            {rateRows && (
-              <div className="w-48 mx-auto">
-                <CoinBreakdown rows={rateRows} triggerLabel="Why this rate" />
-              </div>
             )}
           </div>
 
-          <div className="flex flex-col items-center gap-1">
-            <button onClick={onSkip} className="text-sm font-semibold" style={{ color: C.text }}>
-              {copy.secondary}
-            </button>
-            {copy.secondaryNote && (
-              <p className="text-xs text-center" style={{ color: C.muted }}>
-                {copy.secondaryNote}
-              </p>
+          {/* Seeing the price and paying it. The charge is the largest thing on the screen;
+              nothing else in this group competes with it for weight. */}
+          <div className="flex flex-col gap-6">
+            {rows.length > 0 && (
+              <div className="flex flex-col gap-3">
+                {/* Itemised only when there is something to itemise. A single row IS the
+                    total, so it is rendered as the total instead of being listed above one. */}
+                {!soleRow &&
+                  rows.map((row) => (
+                      <div key={row.id} className="flex items-baseline justify-between gap-4">
+                        <div>
+                          <p className="text-sm" style={{ color: C.text }}>
+                            {row.label}
+                          </p>
+                          {row.detail && (
+                            <p className="text-xs mt-0.5" style={{ color: C.muted }}>
+                              {row.detail}
+                            </p>
+                          )}
+                        </div>
+                        <span
+                          className="flex items-baseline gap-2 text-sm font-semibold whitespace-nowrap"
+                          style={{ color: C.text }}
+                        >
+                          {row.originalAmount > row.amount && (
+                            <span style={{ color: C.muted, textDecoration: "line-through" }}>{row.originalAmount}</span>
+                          )}
+                          <span>{row.amount}</span>
+                        </span>
+                    </div>
+                  ))}
+
+                {/* Also the boundary between choosing an amount and paying for it, so it
+                    renders whether or not there are line items above it. */}
+                <div style={{ borderTop: `1px solid ${C.border}` }} />
+
+                <div className="flex items-end justify-between gap-4">
+                  <div className="pb-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
+                      {soleRow ? soleRow.label : "Total"}
+                    </p>
+                    {soleRow && soleRow.detail && (
+                      <p className="text-xs mt-0.5" style={{ color: C.muted }}>
+                        {soleRow.detail}
+                      </p>
+                    )}
+                  </div>
+                  <span className="flex items-center gap-2 whitespace-nowrap leading-none" style={{ color: C.navy }}>
+                    {listTotal > total && (
+                      <span className="text-lg font-semibold" style={{ color: C.muted, textDecoration: "line-through" }}>
+                        {listTotal}
+                      </span>
+                    )}
+                    <Coin size={26} />
+                    <span className="text-4xl font-bold">{total}</span>
+                  </span>
+                </div>
+              </div>
             )}
+
+            {/* The shortfall is the reason the button is off, so it is fused to the button
+                rather than floating above it as a peer. */}
+            <div className="flex flex-col">
+              {!canPay && (
+                <div
+                  className="rounded-t-xl px-4 py-3 text-sm flex items-center justify-between gap-3"
+                  style={{ background: "#fdeceb", color: C.red }}
+                >
+                  <span>
+                    You&apos;re short {coinShortfall} coin{coinShortfall === 1 ? "" : "s"}.
+                  </span>
+                  <button
+                    onClick={() => onTopUp(coinShortfall)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
+                    style={{ background: C.gold }}
+                  >
+                    <CreditCard size={14} /> Buy Coins
+                  </button>
+                </div>
+              )}
+              <button
+                onClick={() => canPay && onPay(draft, bill)}
+                disabled={!canPay}
+                className={`w-full h-12 font-semibold flex items-center justify-center gap-2 ${canPay ? "rounded-xl" : "rounded-b-xl"}`}
+                style={
+                  canPay
+                    ? { background: C.navy, color: "white", cursor: "pointer" }
+                    : { background: C.bg, color: C.red, borderTop: `1px solid ${C.border}`, cursor: "not-allowed" }
+                }
+              >
+                {canPay ? (
+                  <>
+                    <Coin size={18} /> {copy.primary}
+                  </>
+                ) : (
+                  "Not enough coins"
+                )}
+              </button>
+              {rateRows && (
+                <div className="w-48 mx-auto mt-3">
+                  <CoinBreakdown rows={rateRows} triggerLabel="Why this rate" />
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col items-center gap-1 mt-1">
+              <button onClick={onSkip} className="text-sm font-semibold" style={{ color: C.text }}>
+                {copy.secondary}
+              </button>
+              {copy.secondaryNote && (
+                <p className="text-xs text-center" style={{ color: C.muted }}>
+                  {copy.secondaryNote}
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -3194,7 +3224,6 @@ function PerInviteApp({ policy, flowLabel, onBackToFlows }) {
       {screen === "capacity" && template && (
         <CapacityScreen
           mode={capacityStep.mode}
-          rate={rate}
           coins={coins}
           template={template}
           paidCapacity={capacityPaid}

@@ -96,7 +96,7 @@ export function quotePublish(policy, { templateId, premiumFeatures, capacity }) 
     lines.push({
       key: "capacity",
       label: "Guest capacity",
-      detail: `${capacity} x ${rate} coins`,
+      detail: `${capacity} × ${rate} coins`,
       amount: capacityAmount,
       listAmount: guestQuote.listTotal,
     });
