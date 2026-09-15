@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Lock, ArrowLeft, Check, Users, X, UploadCloud, RotateCcw, PlusCircle, Radio, ListChecks, AlertTriangle, CreditCard, ShieldCheck, Mail, Phone, KeyRound, LogOut, Trash2, UserCircle2 } from "lucide-react";
+import { useState, useMemo, useId } from "react";
+import { Lock, ArrowLeft, Check, Users, X, UploadCloud, RotateCcw, PlusCircle, Radio, ListChecks, AlertTriangle, CreditCard, ShieldCheck, Mail, Phone, KeyRound, LogOut, Trash2, UserCircle2, ChevronDown } from "lucide-react";
 import { FLOW2_POLICY, FLOW2_STARTING_BALANCE, COIN_PACKS, perGuestRate, buildTemplates, quotePublish, quotePremiumUpgrade } from "@/pricing/policy";
 import { flow2AddonRateChangeNote, flow2AddonUpsellNote, flow2TemplateScreenSubtitle, flow2FlowCardBlurb, flow2FlowCardPoints } from "@/pricing/copy";
 
@@ -2148,8 +2148,59 @@ function getFlow2Rate(template, addonEnabled) {
   return perGuestRate(FLOW2_POLICY, { premiumFeatures: addonEnabled, templateId: template ? template.id : null });
 }
 
+// ---------- Flow 2: inline cost breakdown ----------
+// A "read more" for a coin figure. Collapsed by default, expands in place, never floats
+// over anything - costs are explained in the design, not by interrupting with a popup.
+// Rows are `label ... amount` and nothing else; a sentence belongs outside this component.
+// Put it only next to a figure that is composed of more than one thing. A balance or a
+// fixed price has no breakup, and a disclosure triangle there is noise.
+//
+// rows: [{ label, amount, total? }] - a `total` row gets a hairline above it.
+const BREAKDOWN_TONE = {
+  light: { trigger: C.teal, label: C.text, amount: C.text, rule: C.border },
+  onDark: { trigger: "rgba(255,255,255,0.85)", label: "rgba(255,255,255,0.85)", amount: "#ffffff", rule: "rgba(255,255,255,0.28)" },
+};
+
+function CoinBreakdown({ rows, triggerLabel = "Breakdown", tone = "light", align = "start" }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const t = BREAKDOWN_TONE[tone] ?? BREAKDOWN_TONE.light;
+
+  if (!rows || rows.length === 0) return null;
+
+  return (
+    <div className={`flex flex-col gap-1.5 ${align === "end" ? "items-end" : "items-start"}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        className="flex items-center gap-1 text-xs font-semibold"
+        style={{ color: t.trigger, textDecoration: "underline dotted", textUnderlineOffset: 3 }}
+      >
+        {triggerLabel}
+        <ChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : "none" }} />
+      </button>
+      <div id={panelId} className="w-full flex-col gap-1" style={{ display: open ? "flex" : "none" }}>
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="flex items-baseline justify-between gap-6 text-xs"
+            style={row.total ? { borderTop: `1px solid ${t.rule}`, paddingTop: 4, marginTop: 2 } : undefined}
+          >
+            <span style={{ color: t.label }}>{row.label}</span>
+            <span className="font-semibold whitespace-nowrap" style={{ color: t.amount }}>
+              {row.amount}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Flow 2, Screen 2: Edit Template ----------
-function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onContinue, onBack }) {
+function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onContinue, onBack, rateRows = null }) {
   const rate = getFlow2Rate(template, addonEnabled);
   return (
     <div>
@@ -2177,14 +2228,17 @@ function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onCont
 
         <div className="flex flex-col gap-6">
           <div
-            className="rounded-2xl p-5 flex items-center justify-between text-white"
+            className="rounded-2xl p-5 flex flex-col gap-3 text-white"
             style={{ background: "linear-gradient(120deg,#1c385a,#20596a)" }}
           >
-            <div>
-              <p className="text-xs uppercase font-semibold opacity-80">Per-guest rate</p>
-              <p className="text-3xl font-bold">{rate} coins</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase font-semibold opacity-80">Per-guest rate</p>
+                <p className="text-3xl font-bold">{rate} coins</p>
+              </div>
+              <Coin size={48} />
             </div>
-            <Coin size={48} />
+            <CoinBreakdown rows={rateRows} triggerLabel="What makes up this rate" tone="onDark" />
           </div>
 
           <div>
@@ -2285,6 +2339,7 @@ function CapacityScreen({
   shortfallGuests = 0,
   addedGuests = 0,
   quote,
+  rateRows = null,
   presets = [10, 25, 50, 100, 250],
   defaultCapacity = 25,
   onPay,
@@ -2493,6 +2548,11 @@ function CapacityScreen({
             <p className="text-xs text-center" style={{ color: C.muted }}>
               {draft} guest{draft === 1 ? "" : "s"} &times; {rate} coin{rate === 1 ? "" : "s"} = {capacityAmount} coins
             </p>
+            {rateRows && (
+              <div className="w-48 mx-auto">
+                <CoinBreakdown rows={rateRows} triggerLabel="Why this rate" />
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col items-center gap-1">
@@ -2506,70 +2566,6 @@ function CapacityScreen({
             )}
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------- Flow 2: switching on Premium Features mid-event (catch-up cost on the slots already bought at the base rate) ----------
-function PremiumFeaturesUpgradeModal({ open, quote, coins, onConfirm, onClose, onTopUp }) {
-  if (!open) return null;
-  const { paidSlots, oldRate, newRate, total: cost } = quote;
-  const diff = newRate - oldRate;
-  const canPay = coins >= cost;
-  const shortfall = Math.max(0, cost - coins);
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(8,8,8,0.45)", zIndex: 50 }} className="flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 flex flex-col gap-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="text-xl font-semibold" style={{ color: C.text }}>
-              Switch on Premium Features
-            </h2>
-            <p className="text-sm mt-1" style={{ color: C.muted }}>
-              This raises your rate from {oldRate} to {newRate} coins per slot. You've already bought {paidSlots}{" "}
-              slot{paidSlots === 1 ? "" : "s"} at {oldRate} coins each — pay the {diff}-coin difference on each of them
-              now to switch Premium Features on. Any slots you buy later cost {newRate} coins.
-            </p>
-          </div>
-          <button onClick={onClose} aria-label="Close">
-            <X size={18} color={C.muted} />
-          </button>
-        </div>
-
-        <div className="rounded-2xl p-5 flex items-center justify-between" style={{ background: C.bg }}>
-          <span className="text-sm" style={{ color: C.text }}>
-            {paidSlots} slots &times; {diff} coins
-          </span>
-          <span className="flex items-center gap-2 text-xl font-bold" style={{ color: C.navy }}>
-            <Coin size={20} /> {cost}
-          </span>
-        </div>
-
-        {!canPay && (
-          <div className="rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3" style={{ background: "#fdeceb", color: C.red }}>
-            <span>
-              You're short {shortfall} coin{shortfall === 1 ? "" : "s"}.
-            </span>
-            <button
-              onClick={() => onTopUp(shortfall)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
-              style={{ background: C.gold }}
-            >
-              <CreditCard size={14} /> Buy Coins
-            </button>
-          </div>
-        )}
-
-        <button
-          onClick={() => canPay && onConfirm()}
-          disabled={!canPay}
-          className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
-          style={{ background: canPay ? C.navy : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
-        >
-          <Coin size={18} /> {cost > 0 ? `Pay ${cost} Coins & Switch On` : "Switch on Premium Features"}
-        </button>
       </div>
     </div>
   );
@@ -2667,6 +2663,9 @@ function DashboardScreenFlow2({
   onAddLinkGuest,
   onInviteMore,
   onBuyAddon,
+  onTopUp,
+  upgradeQuote,
+  rateRows = null,
   initialTab,
   onTabChange,
   onBack,
@@ -2720,20 +2719,23 @@ function DashboardScreenFlow2({
 
   return (
     <div className="px-8 py-6">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between mb-6">
         <button onClick={onBack} className="flex items-center gap-1 text-sm font-semibold" style={{ color: C.text }}>
           <ArrowLeft size={16} /> Back
         </button>
-        <div className="flex items-center gap-3">
-          <span
-            className="text-xs font-semibold px-3 py-1 rounded-full"
-            style={{ background: template.id === "premium" ? "#e2d9fe" : C.tealLight, color: template.id === "premium" ? "#4a3292" : C.teal }}
-          >
-            {template.tag} &middot; {rate} coins/guest
-          </span>
-          <div className="flex items-center gap-2 text-xs" style={{ color: C.muted }}>
-            <Coin size={16} /> {coins} coins available
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-3">
+            <span
+              className="text-xs font-semibold px-3 py-1 rounded-full"
+              style={{ background: template.id === "premium" ? "#e2d9fe" : C.tealLight, color: template.id === "premium" ? "#4a3292" : C.teal }}
+            >
+              {template.tag} &middot; {rate} coins/guest
+            </span>
+            <div className="flex items-center gap-2 text-xs" style={{ color: C.muted }}>
+              <Coin size={16} /> {coins} coins available
+            </div>
           </div>
+          <CoinBreakdown rows={rateRows} triggerLabel="Why this rate" align="end" />
         </div>
       </div>
 
@@ -2981,20 +2983,89 @@ function DashboardScreenFlow2({
               Send Broadcast
             </button>
           </div>
-        ) : (
-          <div className="rounded-2xl p-10 flex flex-col items-center gap-3 text-center" style={{ background: C.bg }}>
-            <Lock size={22} color={C.text} />
-            <p className="text-sm" style={{ color: C.text }}>
-              Polls, Surveys &amp; Broadcast are Premium Features.
-            </p>
-            <button onClick={onBuyAddon} className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold" style={{ background: C.navy }}>
-              <Coin size={16} /> Switch on Premium Features
-            </button>
-            <p className="text-xs" style={{ color: C.muted }}>
-              {flow2AddonUpsellNote(FLOW2_POLICY)}
-            </p>
-          </div>
-        ))}
+        ) : (() => {
+          // Switching Premium Features on after capacity is bought is a real charge: the
+          // slots already paid for went through at the base rate. The cost is stated here,
+          // where the host turns it on, instead of in a modal - but it is still one explicit
+          // click on a button that names the price, same consent standard as CapacityScreen.
+          const { paidSlots, oldRate, newRate, total: upgradeCost } = upgradeQuote;
+          const diff = newRate - oldRate;
+          const canPay = coins >= upgradeCost;
+          const shortfall = Math.max(0, upgradeCost - coins);
+          const upgradeRows = [
+            { label: "New rate per slot", amount: newRate },
+            { label: "Already paid per slot", amount: oldRate },
+            { label: `${paidSlots} slot${paidSlots === 1 ? "" : "s"} x ${diff}`, amount: upgradeCost, total: true },
+          ];
+
+          return (
+            <div className="rounded-2xl p-10 flex flex-col items-center gap-4 text-center" style={{ background: C.bg }}>
+              <Lock size={22} color={C.text} />
+              <p className="text-sm" style={{ color: C.text }}>
+                Polls, Surveys &amp; Broadcast are Premium Features.
+              </p>
+
+              {upgradeCost > 0 ? (
+                <>
+                  <div className="bg-white rounded-2xl px-5 py-4 w-full max-w-sm flex flex-col gap-2 text-left">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm" style={{ color: C.text }}>
+                        Switch on now
+                      </span>
+                      <span className="flex items-center gap-2 text-xl font-bold whitespace-nowrap" style={{ color: C.navy }}>
+                        <Coin size={20} /> {upgradeCost}
+                      </span>
+                    </div>
+                    <CoinBreakdown rows={upgradeRows} />
+                  </div>
+
+                  {!canPay && (
+                    <div
+                      className="rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3 w-full max-w-sm"
+                      style={{ background: "#fdeceb", color: C.red }}
+                    >
+                      <span>
+                        You&apos;re short {shortfall} coin{shortfall === 1 ? "" : "s"}.
+                      </span>
+                      <button
+                        onClick={() => onTopUp(shortfall)}
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
+                        style={{ background: C.gold }}
+                      >
+                        <CreditCard size={14} /> Buy Coins
+                      </button>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => canPay && onBuyAddon()}
+                    disabled={!canPay}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold"
+                    style={{ background: canPay ? C.navy : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
+                  >
+                    <Coin size={16} /> Pay {upgradeCost} coins &amp; Switch On
+                  </button>
+                  <p className="text-xs" style={{ color: C.muted }}>
+                    Slots you buy later cost {newRate} coins.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={onBuyAddon}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold"
+                    style={{ background: C.navy }}
+                  >
+                    <Coin size={16} /> Switch on Premium Features
+                  </button>
+                  <p className="text-xs" style={{ color: C.muted }}>
+                    {flow2AddonUpsellNote(FLOW2_POLICY)}
+                  </p>
+                </>
+              )}
+            </div>
+          );
+        })())}
     </div>
   );
 }
@@ -3019,7 +3090,6 @@ function PerInviteApp({ onBackToFlows }) {
 
   // Where the capacity step was entered from and where each of its two exits lands.
   const [capacityStep, setCapacityStep] = useState(CAPACITY_STEP_PUBLISH);
-  const [premiumUpgradeModalOpen, setPremiumUpgradeModalOpen] = useState(false);
 
   const [buyCoins, setBuyCoins] = useState({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
   const [profileOpen, setProfileOpen] = useState(false);
@@ -3040,6 +3110,17 @@ function PerInviteApp({ onBackToFlows }) {
   const quotePublishWithCapacity = (n) => quotePublish(FLOW2_POLICY, { templateId: template.id, premiumFeatures: addonActive, capacity: n });
   const templateOnlyQuote = template ? quotePublish(FLOW2_POLICY, { templateId: template.id, premiumFeatures: addonActive, capacity: 0 }) : null;
   const premiumUpgradeQuote = quotePremiumUpgrade(FLOW2_POLICY, { paidSlots: capacityPaid, templateId: template ? template.id : null });
+
+  // The per-guest rate is the only figure in this flow that is composed rather than fixed,
+  // and Premium Features are what compose it. With them off the rate is just the base rate,
+  // so there is nothing to break up and the affordance stays off the screen.
+  const rateBreakdownRows = addonActive
+    ? [
+        { label: "Base rate", amount: FLOW2_POLICY.baseRate },
+        { label: "Premium Features", amount: `+${FLOW2_POLICY.premiumFeaturesRate - FLOW2_POLICY.baseRate}` },
+        { label: "Per guest", amount: FLOW2_POLICY.premiumFeaturesRate, total: true },
+      ]
+    : null;
 
   const handleSelectTemplate = (t) => {
     setTemplate(t);
@@ -3112,23 +3193,13 @@ function PerInviteApp({ onBackToFlows }) {
 
   const handleBuyMoreCapacity = () => openCapacityStep({ mode: "topup", back: "dashboard", next: "dashboard" });
 
-  const handleBuyAddon = () => {
-    if (capacityPaid === 0) {
-      // Nothing bought at the base rate yet, so there is no difference to catch up on.
-      setAddonEnabled(true);
-      setDashboardTab("broadcast");
-      return;
-    }
-    setPremiumUpgradeModalOpen(true);
-  };
-
   // You bought capacityPaid slots at the base rate; switching Premium Features on makes them
-  // premium-rate slots, so the charge is the difference on each one.
-  const handleConfirmPremiumUpgrade = () => {
+  // premium-rate slots, so the charge is the difference on each one. With nothing bought yet
+  // the quote totals 0 and this is the free path - same branch, no special case.
+  const handleBuyAddon = () => {
     if (coins < premiumUpgradeQuote.total) return;
     setCoins((c) => c - premiumUpgradeQuote.total);
     setAddonEnabled(true);
-    setPremiumUpgradeModalOpen(false);
     setDashboardTab("broadcast");
   };
 
@@ -3171,7 +3242,6 @@ function PerInviteApp({ onBackToFlows }) {
     setBulkGuests(0);
     setLinkGuests(0);
     setCapacityStep(CAPACITY_STEP_PUBLISH);
-    setPremiumUpgradeModalOpen(false);
     setBuyCoins({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
     setProfileOpen(false);
   };
@@ -3201,6 +3271,7 @@ function PerInviteApp({ onBackToFlows }) {
           template={template}
           addonEnabled={addonEnabled}
           onToggleAddon={handleToggleAddon}
+          rateRows={rateBreakdownRows}
           onContinue={handleFinishEditTemplate}
           onBack={() => setScreen("template")}
         />
@@ -3216,6 +3287,7 @@ function PerInviteApp({ onBackToFlows }) {
           shortfallGuests={capacityStep.mode === "topup" ? overflowCount : 0}
           addedGuests={totalGuests}
           quote={capacityStep.mode === "publish" ? quotePublishWithCapacity : quoteCapacityOnly}
+          rateRows={rateBreakdownRows}
           presets={FLOW2_POLICY.capacityPresets}
           onPay={handleCapacityPay}
           onSkip={handleCapacitySkip}
@@ -3264,20 +3336,14 @@ function PerInviteApp({ onBackToFlows }) {
           onAddLinkGuest={handleAddLinkGuest}
           onInviteMore={() => setScreen("guestManagement")}
           onBuyAddon={handleBuyAddon}
+          onTopUp={handleOpenBuyCoins}
+          upgradeQuote={premiumUpgradeQuote}
+          rateRows={rateBreakdownRows}
           initialTab={dashboardTab}
           onTabChange={setDashboardTab}
           onBack={() => setScreen("live")}
         />
       )}
-
-      <PremiumFeaturesUpgradeModal
-        open={premiumUpgradeModalOpen}
-        quote={premiumUpgradeQuote}
-        coins={coins}
-        onConfirm={handleConfirmPremiumUpgrade}
-        onClose={() => setPremiumUpgradeModalOpen(false)}
-        onTopUp={handleOpenBuyCoins}
-      />
 
       <BuyCoinsScreen
         open={buyCoins.open && !buyCoins.result}
