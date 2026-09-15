@@ -78,6 +78,10 @@ const TIER_CARDS = [
   { level: 2, label: "PREMIUM", cost: 60, range: "150–250 guests", benefit: "Invite up to 250 guests with every feature fully unlocked." },
 ];
 
+// Flow 1's own add-on price. Turning the add-on on at the customize step is free;
+// this is what it adds to the total charged at publish.
+const PREMIUM_FEATURES_COST = 10;
+
 // ---------- Tier logic ----------
 // The guest tiers (Free/Basic/Premium) are entirely separate from the template
 // you pick. A Premium template just grants Basic-tier benefits for free —
@@ -281,70 +285,6 @@ function TierPricingModal({ open, mode, targetLevel, coins, onPay, onClose, onTo
             </>
           )}
         </button>
-      </div>
-    </div>
-  );
-}
-
-function AddonPromptModal({ open, coins, onAdd, onSkip, onTopUp }) {
-  if (!open) return null;
-  const cost = 10;
-  const canPay = coins >= cost;
-  const shortfall = Math.max(0, cost - coins);
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(8,8,8,0.45)", zIndex: 50 }} className="flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 flex flex-col items-center gap-4 text-center">
-        <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl" style={{ background: C.tealLight }}>
-          ✨
-        </div>
-        <h2 className="text-xl font-semibold" style={{ color: C.text }}>
-          Want Premium Features?
-        </h2>
-        <p className="text-sm" style={{ color: C.muted }}>
-          Unlock Polls, Surveys &amp; Broadcast for this event — send updates and collect feedback from every guest.
-        </p>
-        <div
-          className="w-full py-3 rounded-xl flex items-center justify-center gap-2"
-          style={{ background: C.tealLight }}
-        >
-          <Coin size={20} />
-          <span className="text-2xl font-semibold" style={{ color: C.teal }}>
-            {cost}
-          </span>
-          <span className="text-sm font-semibold" style={{ color: C.teal }}>
-            Coins &middot; one-time
-          </span>
-        </div>
-
-        {!canPay && (
-          <div
-            className="w-full rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3"
-            style={{ background: "#fdeceb", color: C.red }}
-          >
-            <span>Short {shortfall} coin{shortfall === 1 ? "" : "s"}.</span>
-            <button
-              onClick={() => onTopUp(shortfall)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
-              style={{ background: C.gold }}
-            >
-              <CreditCard size={14} /> Buy Coins
-            </button>
-          </div>
-        )}
-
-        <div className="w-full flex flex-col gap-2">
-          <button
-            onClick={() => canPay && onAdd(cost)}
-            disabled={!canPay}
-            className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
-            style={{ background: canPay ? C.navy : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
-          >
-            <Coin size={18} /> Add for {cost} Coins
-          </button>
-          <button onClick={onSkip} className="text-sm font-semibold py-2" style={{ color: C.muted }}>
-            Not now — I can add this later
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -877,7 +817,7 @@ function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Bo
 }
 
 // ---------- Screen 2: Edit Template (premium features are offered here) ----------
-function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, onContinue, onBack }) {
+function EditTemplateScreen({ template, addonEnabled, onToggleAddon, onContinue, onBack }) {
   return (
     <div>
       <div className="flex items-center justify-between px-8 py-3 border-b" style={{ borderColor: C.border }}>
@@ -948,41 +888,31 @@ function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, on
                   </p>
                 </div>
               </div>
-            ) : addonPurchased ? (
-              <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: C.tealLight, border: `1px solid ${C.teal}` }}>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: C.teal }}>
-                  <Check size={14} color="white" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold" style={{ color: C.text }}>
-                    Premium Features added
-                  </p>
-                  <p className="text-xs" style={{ color: C.muted }}>
-                    Polls, Surveys &amp; Broadcast are ready to use once your invite is live.
-                  </p>
-                </div>
-              </div>
             ) : (
-              <div className="rounded-xl p-4 flex items-center justify-between gap-3" style={{ border: `1px solid ${C.border}` }}>
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">✨</span>
-                  <div>
-                    <p className="text-sm font-bold" style={{ color: C.text }}>
-                      Premium Features
-                    </p>
-                    <p className="text-xs" style={{ color: C.muted }}>
-                      Polls, Surveys &amp; Broadcast for your guests.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={onAddPremiumFeatures}
-                  className="text-sm font-semibold px-4 py-2 rounded-lg text-white whitespace-nowrap"
-                  style={{ background: C.navy }}
+              <>
+                <label
+                  className="rounded-xl p-4 flex items-center justify-between gap-3 cursor-pointer"
+                  style={{ border: `1px solid ${addonEnabled ? C.teal : C.border}`, background: addonEnabled ? C.tealLight : "white" }}
                 >
-                  Add
-                </button>
-              </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">✨</span>
+                    <div>
+                      <p className="text-sm font-bold" style={{ color: C.text }}>
+                        Premium Features
+                      </p>
+                      <p className="text-xs" style={{ color: C.muted }}>
+                        Polls, Surveys &amp; Broadcast for your guests.
+                      </p>
+                    </div>
+                  </div>
+                  <input type="checkbox" checked={addonEnabled} onChange={onToggleAddon} className="shrink-0" />
+                </label>
+                {addonEnabled && (
+                  <p className="text-xs mt-2" style={{ color: C.muted }}>
+                    Adds {PREMIUM_FEATURES_COST} coins to your total when you publish.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1206,17 +1136,26 @@ function GuestListPanel({ guestList, paidLevel, onInviteMore, onUpgrade, linkGue
 }
 
 // ---------- Screen 2.5: Confirm & Publish (Figma screen "8") ----------
-function getPublishCost(template) {
-  return template.cost;
+// The premium template already bundles Premium Features free, so the add-on
+// toggle never adds a charge on top of it - only a non-premium template with
+// the toggle on owes the flat add-on price.
+function getAddonCost(template, addonEnabled) {
+  return addonEnabled && template.id !== "premium" ? PREMIUM_FEATURES_COST : 0;
 }
 
-function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPublish, onCancel, onTopUp }) {
-  const cost = getPublishCost(template);
+function getPublishCost(template, addonEnabled) {
+  return template.cost + getAddonCost(template, addonEnabled);
+}
+
+function ConfirmPublishScreen({ template, paidLevel, addonEnabled, coins, onPublish, onCancel, onTopUp }) {
+  const templateCost = template.cost;
+  const addonCost = getAddonCost(template, addonEnabled);
+  const cost = templateCost + addonCost;
   const canPay = coins >= cost;
   const shortfall = Math.max(0, cost - coins);
   const capByLevel = [50, 150, 250];
   const guestCap = capByLevel[paidLevel];
-  const hasPremiumFeatures = addonPurchased || template.id === "premium";
+  const hasPremiumFeatures = addonEnabled || template.id === "premium";
 
   return (
     <div className="min-h-[calc(100vh-56px)] flex items-center justify-center p-6">
@@ -1236,10 +1175,28 @@ function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPu
             className="w-full rounded-2xl p-4 flex flex-col gap-3"
             style={{ background: "#f2f2f2", border: `1px solid ${C.navy}` }}
           >
-            <HighlightRow
-              title={cost > 0 ? `Costs ${cost} coins` : "Free to publish"}
-              subtitle={cost > 0 ? "One-time payment to publish your invite." : "No charges yet — guest tiers are billed as you add people."}
-            />
+            {addonCost > 0 ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-baseline justify-between text-sm" style={{ color: C.text }}>
+                  <span>Template</span>
+                  <span className="font-semibold">{templateCost > 0 ? `${templateCost} coins` : "Free"}</span>
+                </div>
+                <div className="flex items-baseline justify-between text-sm" style={{ color: C.text }}>
+                  <span>Premium Features</span>
+                  <span className="font-semibold">{addonCost} coins</span>
+                </div>
+                <div style={{ borderTop: `1px solid ${C.border}` }} />
+                <div className="flex items-baseline justify-between text-sm font-bold" style={{ color: C.text }}>
+                  <span>Total</span>
+                  <span>{cost} coins</span>
+                </div>
+              </div>
+            ) : (
+              <HighlightRow
+                title={cost > 0 ? `Costs ${cost} coins` : "Free to publish"}
+                subtitle={cost > 0 ? "One-time payment to publish your invite." : "No charges yet — guest tiers are billed as you add people."}
+              />
+            )}
             <div style={{ borderTop: `1px solid ${C.border}` }} />
             <HighlightRow
               title={`Add up to ${guestCap} guests for free`}
@@ -1435,10 +1392,9 @@ function DashboardScreen({
   guestCount,
   tierLevel,
   featuresUnlocked,
-  addonPurchased,
+  addonEnabled,
   addonIncluded,
   onUpgrade,
-  onBuyAddon,
   coins,
   initialTab,
   guestList,
@@ -1688,9 +1644,9 @@ function DashboardScreen({
       })()}
 
       {tab === "broadcast" &&
-        (addonPurchased || addonIncluded || template.id === "premium" ? (
+        (addonEnabled || addonIncluded || template.id === "premium" ? (
           <div className="rounded-2xl p-6" style={{ background: C.bg }}>
-            {!addonPurchased && (addonIncluded || template.id === "premium") && (
+            {!addonEnabled && (addonIncluded || template.id === "premium") && (
               <p className="text-xs font-semibold mb-3" style={{ color: C.teal }}>
                 {template.id === "premium" ? "Included free with your Premium template." : "Included free with your Premium tier."}
               </p>
@@ -1714,13 +1670,9 @@ function DashboardScreen({
             <p className="text-sm" style={{ color: C.text }}>
               Polls, Surveys &amp; Broadcast are Premium Features.
             </p>
-            <button
-              onClick={onBuyAddon}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold"
-              style={{ background: C.navy }}
-            >
-              <Coin size={16} /> Unlock for 10 Coins
-            </button>
+            <p className="text-xs" style={{ color: C.muted }}>
+              Turn this on next time you customize a template, or reach the Premium tier by inviting more guests.
+            </p>
           </div>
         ))}
     </div>
@@ -1741,9 +1693,7 @@ function TierBasedApp({ onBackToFlows }) {
   const [bulkGuests, setBulkGuests] = useState(0);
   const [linkGuests, setLinkGuests] = useState(0);
   const [paidLevel, setPaidLevel] = useState(0);
-  const [addonPurchased, setAddonPurchased] = useState(false);
-  const [addonDeclined, setAddonDeclined] = useState(false);
-  const [addonPromptOpen, setAddonPromptOpen] = useState(false);
+  const [addonEnabled, setAddonEnabled] = useState(false);
 
   const [modal, setModal] = useState({ open: false, mode: "select", targetLevel: 0, pending: null });
   const [buyCoins, setBuyCoins] = useState({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
@@ -1803,18 +1753,20 @@ function TierBasedApp({ onBackToFlows }) {
     setScreen("editTemplate");
   };
 
-  const handleAddPremiumFeaturesClick = () => setAddonPromptOpen(true);
+  const handleToggleAddon = () => setAddonEnabled((v) => !v);
 
   const handlePublish = () => {
-    setCoins((c) => c - getPublishCost(template));
+    setCoins((c) => c - getPublishCost(template, addonEnabled));
     setScreen("live");
   };
 
-  // If the template itself is free, there's nothing left to charge at publish time —
-  // the guest tiers are billed later and any premium-features add-on was already charged
-  // the moment it was added. So skip the confirm screen and go straight to "Invite is Live".
+  // Anything owed at publish - the template's own price, the premium-features
+  // add-on turned on while customizing, or both - routes through the confirm
+  // screen so the host sees and approves the total before it's charged. Only a
+  // genuinely free combination (free template, add-on off) skips straight to
+  // "Invite is Live".
   const handleFinishEditTemplate = () => {
-    if (template.cost > 0) {
+    if (getPublishCost(template, addonEnabled) > 0) {
       setScreen("confirm");
     } else {
       setScreen("live");
@@ -1829,19 +1781,6 @@ function TierBasedApp({ onBackToFlows }) {
     setModal({ open: true, mode: "select", targetLevel, pending: () => {} });
   };
 
-  const handleBuyAddon = () => setAddonPromptOpen(true);
-
-  const handleAddonPromptAdd = (cost) => {
-    setCoins((c) => c - cost);
-    setAddonPurchased(true);
-    setAddonPromptOpen(false);
-  };
-
-  const handleAddonPromptSkip = () => {
-    setAddonDeclined(true);
-    setAddonPromptOpen(false);
-  };
-
   const handleReset = () => {
     setScreen("template");
     setDashboardTab("guests");
@@ -1851,9 +1790,7 @@ function TierBasedApp({ onBackToFlows }) {
     setBulkGuests(0);
     setLinkGuests(0);
     setPaidLevel(0);
-    setAddonPurchased(false);
-    setAddonDeclined(false);
-    setAddonPromptOpen(false);
+    setAddonEnabled(false);
     setModal({ open: false, mode: "select", targetLevel: 0, pending: null });
     setBuyCoins({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
     setProfileOpen(false);
@@ -1914,8 +1851,8 @@ function TierBasedApp({ onBackToFlows }) {
       {screen === "editTemplate" && template && (
         <EditTemplateScreen
           template={template}
-          addonPurchased={addonPurchased}
-          onAddPremiumFeatures={handleAddPremiumFeaturesClick}
+          addonEnabled={addonEnabled}
+          onToggleAddon={handleToggleAddon}
           onContinue={handleFinishEditTemplate}
           onBack={() => setScreen("template")}
         />
@@ -1925,7 +1862,7 @@ function TierBasedApp({ onBackToFlows }) {
         <ConfirmPublishScreen
           template={template}
           paidLevel={paidLevel}
-          addonPurchased={addonPurchased}
+          addonEnabled={addonEnabled}
           coins={coins}
           onPublish={handlePublish}
           onCancel={() => setScreen("editTemplate")}
@@ -1968,10 +1905,9 @@ function TierBasedApp({ onBackToFlows }) {
           guestCount={guestCount}
           tierLevel={paidLevel}
           featuresUnlocked={featuresUnlocked}
-          addonPurchased={addonPurchased}
+          addonEnabled={addonEnabled}
           addonIncluded={addonIncluded}
           onUpgrade={handleUpgradeFromDashboard}
-          onBuyAddon={handleBuyAddon}
           coins={coins}
           initialTab={dashboardTab}
           guestList={guestList}
@@ -1989,14 +1925,6 @@ function TierBasedApp({ onBackToFlows }) {
         coins={coins}
         onPay={handlePay}
         onClose={handleModalClose}
-        onTopUp={handleOpenBuyCoins}
-      />
-
-      <AddonPromptModal
-        open={addonPromptOpen}
-        coins={coins}
-        onAdd={handleAddonPromptAdd}
-        onSkip={handleAddonPromptSkip}
         onTopUp={handleOpenBuyCoins}
       />
 
