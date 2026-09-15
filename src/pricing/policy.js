@@ -59,16 +59,28 @@ function bundleRung(bundles, guests) {
 // target is itself computed through this same function, so it is exact at every
 // rung (not just the presets a human happens to click) and the recursion bottoms
 // out at the top rung, which has no "next" to clamp against.
+//
+// The part-coin goes up, never to nearest: rounding to nearest leaves a sub-coin
+// gap that two purchases can exploit against one (102 + 104 came to 329 where 206
+// in one go came to 330), so the advertised bulk price was beatable by splitting
+// at 33 quantities under 300. Rounding up is superadditive, which closes it.
 function bundleTotal(bundles, rate, guests) {
   const rung = bundleRung(bundles, guests);
   const discount = rung ? rung.discount : 0;
-  const raw = Math.round(guests * rate * (1 - discount));
+  const raw = Math.ceil(guests * rate * (1 - discount));
   const next = bundles.find((b) => b.capacity > guests);
   if (!next) return raw;
   return Math.min(raw, bundleTotal(bundles, rate, next.capacity));
 }
 
-export function quoteGuests(policy, { guests, premiumFeatures, templateId }) {
+// Guests are whole and cannot be negative, and this is where that is enforced -
+// every capacity charge in the product is quoted through here, so a caller that
+// leaks 2.5 or -1 in cannot produce an unpayable price or a negative one (a
+// negative charge is a refund, and there is no refund path). The normalised count
+// comes back out so a screen cannot display one quantity and charge for another.
+export function quoteGuests(policy, options) {
+  const { premiumFeatures, templateId } = options;
+  const guests = Math.max(0, Math.floor(options.guests || 0));
   const rate = perGuestRate(policy, { premiumFeatures, templateId });
   const listTotal = guests * rate;
   const total = policy.bundles ? bundleTotal(policy.bundles, rate, guests) : listTotal;
@@ -84,8 +96,9 @@ const TEMPLATE_LINE_LABEL = { free: "Free template", premium: "Premium template"
 // capacity-only bill (activate / top-up) is quoted without a second bill-builder.
 export function quotePublish(policy, { templateId, premiumFeatures, capacity }) {
   const templateAmount = policy.templatePrice[templateId] ?? 0;
-  const guestQuote = quoteGuests(policy, { guests: capacity || 0, premiumFeatures, templateId });
+  const guestQuote = quoteGuests(policy, { guests: capacity, premiumFeatures, templateId });
   const rate = guestQuote.rate;
+  const guests = guestQuote.guests;
   const capacityAmount = guestQuote.total;
 
   const lines = [];
@@ -96,23 +109,42 @@ export function quotePublish(policy, { templateId, premiumFeatures, capacity }) 
     lines.push({
       key: "capacity",
       label: "Guest capacity",
-      detail: `${capacity} × ${rate} coins`,
+      detail:
+        guestQuote.discount > 0
+          ? `${guests} × ${rate} coins, less ${guestQuote.discount} bulk discount`
+          : `${guests} × ${rate} coins`,
       amount: capacityAmount,
       listAmount: guestQuote.listTotal,
     });
   }
 
   const total = lines.reduce((sum, line) => sum + line.amount, 0);
-  return { lines, total };
+  const listTotal = lines.reduce((sum, line) => sum + (line.listAmount ?? line.amount), 0);
+  return { lines, total, listTotal };
 }
 
 // templateId no longer affects the rate (Premium Features cost the same on
 // any template) but stays in the signature so callers can pass the same
 // options shape they use for quotePublish/quoteGuests.
+//
+// The charge is the difference between the two capacity quotes for the slots already
+// bought, not paidSlots times the list-rate gap. Under a bundle discount those are not
+// the same number, and the gap version bills a rate the host never paid - upgrading 100
+// discounted slots cost 300 against the 160 actually paid, so the late route to premium
+// came to 460 where buying it up front came to 400. Quoting both ends through the same
+// discount math makes the two routes cost the same by construction, at every quantity.
 export function quotePremiumUpgrade(policy, { paidSlots, templateId }) {
-  const oldRate = perGuestRate(policy, { premiumFeatures: false, templateId });
-  const newRate = perGuestRate(policy, { premiumFeatures: true, templateId });
-  return { paidSlots, oldRate, newRate, total: paidSlots * (newRate - oldRate) };
+  const slots = paidSlots || 0;
+  const paidQuote = quoteGuests(policy, { guests: slots, premiumFeatures: false, templateId });
+  const upgradedQuote = quoteGuests(policy, { guests: slots, premiumFeatures: true, templateId });
+  return {
+    paidSlots,
+    oldRate: paidQuote.rate,
+    newRate: upgradedQuote.rate,
+    paidTotal: paidQuote.total,
+    upgradedTotal: upgradedQuote.total,
+    total: upgradedQuote.total - paidQuote.total,
+  };
 }
 
 export function buildTemplates(policy) {

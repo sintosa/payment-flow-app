@@ -296,7 +296,15 @@ function BuyCoinsScreen({ open, coins, packs, selectedPackIndex, onSelectPack, p
   return (
     <div style={{ position: "fixed", inset: 0, background: "white", zIndex: 60, overflowY: "auto" }}>
       <div className="flex items-center justify-between px-8 h-14 border-b" style={{ borderColor: C.border }}>
-        <button onClick={onClose} className="flex items-center gap-2 text-sm font-semibold" style={{ color: C.text }}>
+        {/* Disabled while the purchase is in flight for the same reason the confirm and pack
+            buttons are: leaving this one live lets the host close the overlay mid-purchase,
+            and the credit then lands with the success screen already gone. */}
+        <button
+          onClick={onClose}
+          disabled={processing}
+          className="flex items-center gap-2 text-sm font-semibold"
+          style={{ color: C.text, opacity: processing ? 0.5 : 1, cursor: processing ? "not-allowed" : "pointer" }}
+        >
           <ArrowLeft size={18} /> Buy Elie Coins
         </button>
         <div className="flex items-center gap-6">
@@ -2227,19 +2235,23 @@ function EditTemplateScreenFlow2({ policy, template, addonEnabled, onToggleAddon
 //
 //   quote(capacity) -> {
 //     rows:  [{ id, label, detail?, amount, originalAmount? }],
-//     total: number
+//     total: number,
+//     originalTotal?: number
 //   }
 //
-// `lines`/`key`/`listAmount` are accepted as aliases for `rows`/`id`/`originalAmount`, because
-// src/pricing/policy.js spells them that way.
+// `lines`/`key`/`listAmount`/`listTotal` are accepted as aliases for
+// `rows`/`id`/`originalAmount`/`originalTotal`, because src/pricing/policy.js spells them
+// that way.
 //
 // A row carrying an original amount greater than `amount` renders the original struck through
-// beside the charged figure. Nothing in this flow sets it; the branch exists for the
-// discounted flow being added later, so the payment step does not have to be reopened.
+// beside the charged figure, and the same for the bill's original total against the charged
+// total. Flow 3 sets both; Flow 2 quotes them equal and neither strikethrough appears. The
+// undiscounted figure is quoted, never re-summed here - a total added up in the view is a
+// second source for a number the host reads off the same screen as the charge.
 function CapacityScreen({
   mode,
   coins,
-  template = null,
+  skipAmount = 0,
   paidCapacity = 0,
   shortfallGuests = 0,
   addedGuests = 0,
@@ -2279,9 +2291,7 @@ function CapacityScreen({
 
   // One row is its own total, so it is rendered as the total rather than itemised above one.
   const soleRow = rows.length === 1 ? rows[0] : null;
-  const listTotal = rows.reduce((sum, r) => sum + (r.originalAmount ?? r.amount), 0);
-
-  const templateCost = template ? template.cost : 0;
+  const listTotal = bill.originalTotal ?? bill.listTotal ?? total;
 
   const copy = {
     publish: {
@@ -2290,8 +2300,8 @@ function CapacityScreen({
       primary: total > 0 ? `Pay ${total} coins & Publish` : "Publish",
       secondary: "Publish without a share link for now",
       secondaryNote:
-        templateCost > 0
-          ? `Your invite goes live for ${templateCost} coins, but the share link stays off until you buy capacity.`
+        skipAmount > 0
+          ? `Your invite goes live for ${skipAmount} coins, but the share link stays off until you buy capacity.`
           : "Your invite goes live free, but the share link stays off until you buy capacity.",
     },
     activate: {
@@ -2365,7 +2375,9 @@ function CapacityScreen({
               <input
                 type="number"
                 value={draft}
-                onChange={(e) => setDraft(Math.max(1, Number(e.target.value) || 1))}
+                onChange={(e) => setDraft(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                min={1}
+                step={1}
                 aria-label="Guests you are paying for"
                 className="flex-1 min-w-0 text-center font-bold text-lg bg-transparent focus-visible:outline-2 focus-visible:outline-offset-[-3px] [appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0"
                 style={{ color: C.text, outlineColor: C.navy }}
@@ -2927,14 +2939,17 @@ function DashboardScreenFlow2({
           // slots already paid for went through at the base rate. The cost is stated here,
           // where the host turns it on, instead of in a modal - but it is still one explicit
           // click on a button that names the price, same consent standard as CapacityScreen.
-          const { paidSlots, oldRate, newRate, total: upgradeCost } = upgradeQuote;
-          const diff = newRate - oldRate;
+          const { paidSlots, newRate, paidTotal, upgradedTotal, total: upgradeCost } = upgradeQuote;
           const canPay = coins >= upgradeCost;
           const shortfall = Math.max(0, upgradeCost - coins);
+          // Totals, not per-slot rates. Under a bulk discount the slots already bought did
+          // not go through at the list rate, and a per-slot figure for them is a fraction
+          // that contradicts the host's own receipt.
+          const slotLabel = `${paidSlots} slot${paidSlots === 1 ? "" : "s"}`;
           const upgradeRows = [
-            { label: "New rate per slot", amount: newRate },
-            { label: "Already paid per slot", amount: oldRate },
-            { label: `${paidSlots} slot${paidSlots === 1 ? "" : "s"} x ${diff}`, amount: upgradeCost, total: true },
+            { label: `${slotLabel} with Premium Features`, amount: upgradedTotal },
+            { label: `${slotLabel} already paid for`, amount: `-${paidTotal}` },
+            { label: "Switch on now", amount: upgradeCost, total: true },
           ];
 
           return (
@@ -3225,7 +3240,7 @@ function PerInviteApp({ policy, flowLabel, onBackToFlows }) {
         <CapacityScreen
           mode={capacityStep.mode}
           coins={coins}
-          template={template}
+          skipAmount={templateOnlyQuote.total}
           paidCapacity={capacityPaid}
           shortfallGuests={capacityStep.mode === "topup" ? overflowCount : 0}
           addedGuests={totalGuests}
