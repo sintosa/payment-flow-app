@@ -2,8 +2,8 @@
 
 import { useState, useMemo, useId } from "react";
 import { Lock, ArrowLeft, Check, Users, X, UploadCloud, RotateCcw, PlusCircle, Radio, ListChecks, AlertTriangle, CreditCard, ShieldCheck, Mail, Phone, KeyRound, LogOut, Trash2, UserCircle2, ChevronDown } from "lucide-react";
-import { FLOW2_POLICY, FLOW2_STARTING_BALANCE, COIN_PACKS, perGuestRate, buildTemplates, quotePublish, quotePremiumUpgrade } from "@/pricing/policy";
-import { flow2AddonRateChangeNote, flow2AddonUpsellNote, flow2TemplateScreenSubtitle, flow2FlowCardBlurb, flow2FlowCardPoints } from "@/pricing/copy";
+import { FLOW2_POLICY, FLOW3_POLICY, FLOW2_STARTING_BALANCE, COIN_PACKS, perGuestRate, buildTemplates, quotePublish, quotePremiumUpgrade } from "@/pricing/policy";
+import { flow2AddonRateChangeNote, flow2AddonUpsellNote, flow2TemplateScreenSubtitle, flow2FlowCardBlurb, flow2FlowCardPoints, flow3FlowCardBlurb, flow3FlowCardPoints } from "@/pricing/copy";
 
 // ---------- Design tokens (matched to the Airawath Figma file) ----------
 const C = {
@@ -71,8 +71,6 @@ const TEMPLATES = [
     blurb: "A fully designed premium invite. Basic tier is included free — up to 150 guests and the full dashboard. Premium tier is still a separate upgrade.",
   },
 ];
-
-const TEMPLATES_FLOW2 = buildTemplates(FLOW2_POLICY);
 
 const TIER_CARDS = [
   { level: 0, label: "FREE", cost: 0, range: "0–50 guests", benefit: "Create your event and invite up to 50 guests for free." },
@@ -2043,34 +2041,10 @@ function TierBasedApp({ onBackToFlows }) {
 }
 
 // ---------- Flow selection landing page ----------
-function FlowSelectScreen({ onSelectFlow }) {
-  const flows = [
-    {
-      id: "flow1",
-      title: "Flow 1 · Tier Based",
-      status: "Ready to test",
-      statusColor: C.teal,
-      statusBg: C.tealLight,
-      blurb:
-        "Guest capacity is split into Free / Basic / Premium tiers. Crossing 50 or 150 guests triggers a coin-based tier upgrade. Templates, premium features, and the full dashboard are all wired up.",
-      points: ["Free / Basic / Premium guest tiers", "Premium template & premium features add-on", "Guest management, RSVP summary, coins & profile"],
-      enabled: true,
-    },
-    {
-      id: "flow2",
-      title: "Flow 2 · Per Invite Based",
-      status: "Ready to test",
-      statusColor: "#8a2ba8",
-      statusBg: "#fdf0ff",
-      blurb: flow2FlowCardBlurb(FLOW2_POLICY),
-      points: flow2FlowCardPoints(FLOW2_POLICY),
-      enabled: true,
-    },
-  ];
-
+function FlowSelectScreen({ flows, onSelectFlow }) {
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-8" style={{ background: C.bg }}>
-      <div className="max-w-4xl w-full">
+      <div className="max-w-6xl w-full">
         <p
           className="text-2xl font-semibold mb-1 text-center"
           style={{
@@ -2084,7 +2058,7 @@ function FlowSelectScreen({ onSelectFlow }) {
         <p className="text-sm text-center mb-10" style={{ color: C.muted }}>
           Choose which payment flow prototype you want to test.
         </p>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {flows.map((f) => (
             <button
               key={f.id}
@@ -2144,8 +2118,10 @@ function FlowSelectScreen({ onSelectFlow }) {
 // Guests past the capacity bought are hidden until the host buys more.
 // =====================================================================
 
-function getFlow2Rate(template, addonEnabled) {
-  return perGuestRate(FLOW2_POLICY, { premiumFeatures: addonEnabled, templateId: template ? template.id : null });
+// Shared by every Per-Invite-shaped flow (Flow 2, Flow 3, ...) - the rate math
+// itself never differs, only which policy it reads.
+function getPerInviteRate(policy, template, addonEnabled) {
+  return perGuestRate(policy, { premiumFeatures: addonEnabled, templateId: template ? template.id : null });
 }
 
 // ---------- Flow 2: inline cost breakdown ----------
@@ -2200,8 +2176,8 @@ function CoinBreakdown({ rows, triggerLabel = "Breakdown", tone = "light", align
 }
 
 // ---------- Flow 2, Screen 2: Edit Template ----------
-function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onContinue, onBack, rateRows = null }) {
-  const rate = getFlow2Rate(template, addonEnabled);
+function EditTemplateScreenFlow2({ policy, template, addonEnabled, onToggleAddon, onContinue, onBack, rateRows = null }) {
+  const rate = getPerInviteRate(policy, template, addonEnabled);
   return (
     <div>
       <div className="flex items-center justify-between px-8 py-3 border-b" style={{ borderColor: C.border }}>
@@ -2289,7 +2265,7 @@ function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onCont
             </label>
             {addonEnabled && (
               <p className="text-xs mt-2" style={{ color: C.muted }}>
-                {flow2AddonRateChangeNote(FLOW2_POLICY)}
+                {flow2AddonRateChangeNote(policy)}
               </p>
             )}
           </div>
@@ -2545,9 +2521,11 @@ function CapacityScreen({
             >
               <Coin size={18} /> {copy.primary}
             </button>
-            <p className="text-xs text-center" style={{ color: C.muted }}>
-              {draft} guest{draft === 1 ? "" : "s"} &times; {rate} coin{rate === 1 ? "" : "s"} = {capacityAmount} coins
-            </p>
+            {capacityAmount === draft * rate && (
+              <p className="text-xs text-center" style={{ color: C.muted }}>
+                {draft} guest{draft === 1 ? "" : "s"} &times; {rate} coin{rate === 1 ? "" : "s"} = {capacityAmount} coins
+              </p>
+            )}
             {rateRows && (
               <div className="w-48 mx-auto">
                 <CoinBreakdown rows={rateRows} triggerLabel="Why this rate" />
@@ -2653,6 +2631,7 @@ function GuestManagementScreenFlow2({ selected, onToggleContact, bulkGuests, onB
 
 // ---------- Flow 2 Dashboard ----------
 function DashboardScreenFlow2({
+  policy,
   template,
   guestList,
   capacityPaid,
@@ -3059,7 +3038,7 @@ function DashboardScreenFlow2({
                     <Coin size={16} /> Switch on Premium Features
                   </button>
                   <p className="text-xs" style={{ color: C.muted }}>
-                    {flow2AddonUpsellNote(FLOW2_POLICY)}
+                    {flow2AddonUpsellNote(policy)}
                   </p>
                 </>
               )}
@@ -3076,7 +3055,7 @@ const CAPACITY_STEP_PUBLISH = { mode: "publish", back: "editTemplate", next: "li
 // Every amount deducted here comes from a quote object in src/pricing/policy.js, never an
 // inline n * rate product. You cannot charge a total you did not quote, and a quote always
 // carries its operands so the screen can show the arithmetic.
-function PerInviteApp({ onBackToFlows }) {
+function PerInviteApp({ policy, flowLabel, onBackToFlows }) {
   const [screen, setScreen] = useState("template"); // template | editTemplate | capacity | live | guestManagement | dashboard
   const [dashboardTab, setDashboardTab] = useState("guests");
   const [coins, setCoins] = useState(FLOW2_STARTING_BALANCE);
@@ -3094,7 +3073,8 @@ function PerInviteApp({ onBackToFlows }) {
   const [buyCoins, setBuyCoins] = useState({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const rate = getFlow2Rate(template, addonEnabled);
+  const templates = buildTemplates(policy);
+  const rate = getPerInviteRate(policy, template, addonEnabled);
   const guestList = useMemo(() => buildGuestList(selected, bulkGuests, linkGuests), [selected, bulkGuests, linkGuests]);
   const addonActive = template ? addonEnabled : false;
 
@@ -3106,19 +3086,19 @@ function PerInviteApp({ onBackToFlows }) {
 
   // One bill-builder behind all three capacity modes: a capacity-only bill is the publish
   // bill with no template line (templateId null prices at 0), so the two can never drift.
-  const quoteCapacityOnly = (n) => quotePublish(FLOW2_POLICY, { templateId: null, premiumFeatures: addonActive, capacity: n });
-  const quotePublishWithCapacity = (n) => quotePublish(FLOW2_POLICY, { templateId: template.id, premiumFeatures: addonActive, capacity: n });
-  const templateOnlyQuote = template ? quotePublish(FLOW2_POLICY, { templateId: template.id, premiumFeatures: addonActive, capacity: 0 }) : null;
-  const premiumUpgradeQuote = quotePremiumUpgrade(FLOW2_POLICY, { paidSlots: capacityPaid, templateId: template ? template.id : null });
+  const quoteCapacityOnly = (n) => quotePublish(policy, { templateId: null, premiumFeatures: addonActive, capacity: n });
+  const quotePublishWithCapacity = (n) => quotePublish(policy, { templateId: template.id, premiumFeatures: addonActive, capacity: n });
+  const templateOnlyQuote = template ? quotePublish(policy, { templateId: template.id, premiumFeatures: addonActive, capacity: 0 }) : null;
+  const premiumUpgradeQuote = quotePremiumUpgrade(policy, { paidSlots: capacityPaid, templateId: template ? template.id : null });
 
   // The per-guest rate is the only figure in this flow that is composed rather than fixed,
   // and Premium Features are what compose it. With them off the rate is just the base rate,
   // so there is nothing to break up and the affordance stays off the screen.
   const rateBreakdownRows = addonActive
     ? [
-        { label: "Base rate", amount: FLOW2_POLICY.baseRate },
-        { label: "Premium Features", amount: `+${FLOW2_POLICY.premiumFeaturesRate - FLOW2_POLICY.baseRate}` },
-        { label: "Per guest", amount: FLOW2_POLICY.premiumFeaturesRate, total: true },
+        { label: "Base rate", amount: policy.baseRate },
+        { label: "Premium Features", amount: `+${policy.premiumFeaturesRate - policy.baseRate}` },
+        { label: "Per guest", amount: policy.premiumFeaturesRate, total: true },
       ]
     : null;
 
@@ -3254,20 +3234,21 @@ function PerInviteApp({ onBackToFlows }) {
         onReset={handleReset}
         onOpenProfile={() => setProfileOpen(true)}
         onBackToFlows={onBackToFlows}
-        flowLabel="Flow 2 · Per Invite Based"
+        flowLabel={flowLabel}
       />
 
       {screen === "template" && (
         <TemplateScreen
           coins={coins}
           onSelect={handleSelectTemplate}
-          templates={TEMPLATES_FLOW2}
-          subtitle={flow2TemplateScreenSubtitle(FLOW2_POLICY)}
+          templates={templates}
+          subtitle={flow2TemplateScreenSubtitle(policy)}
         />
       )}
 
       {screen === "editTemplate" && template && (
         <EditTemplateScreenFlow2
+          policy={policy}
           template={template}
           addonEnabled={addonEnabled}
           onToggleAddon={handleToggleAddon}
@@ -3288,7 +3269,7 @@ function PerInviteApp({ onBackToFlows }) {
           addedGuests={totalGuests}
           quote={capacityStep.mode === "publish" ? quotePublishWithCapacity : quoteCapacityOnly}
           rateRows={rateBreakdownRows}
-          presets={FLOW2_POLICY.capacityPresets}
+          presets={policy.capacityPresets}
           onPay={handleCapacityPay}
           onSkip={handleCapacitySkip}
           onClose={() => setScreen(capacityStep.back)}
@@ -3326,6 +3307,7 @@ function PerInviteApp({ onBackToFlows }) {
 
       {screen === "dashboard" && template && (
         <DashboardScreenFlow2
+          policy={policy}
           template={template}
           guestList={guestList}
           capacityPaid={capacityPaid}
@@ -3387,15 +3369,65 @@ function PerInviteApp({ onBackToFlows }) {
   );
 }
 
+// ---------- Flow registry ----------
+// One entry per card on the landing screen. `policy` is null for Flow 1 - it isn't
+// parameterised, it keeps its own tier constants - and is simply an unused prop when
+// passed to TierBasedApp below.
+const FLOWS = [
+  {
+    id: "flow1",
+    title: "Flow 1 · Tier Based",
+    status: "Ready to test",
+    statusColor: C.teal,
+    statusBg: C.tealLight,
+    blurb:
+      "Guest capacity is split into Free / Basic / Premium tiers. Crossing 50 or 150 guests triggers a coin-based tier upgrade. Templates, premium features, and the full dashboard are all wired up.",
+    points: ["Free / Basic / Premium guest tiers", "Premium template & premium features add-on", "Guest management, RSVP summary, coins & profile"],
+    enabled: true,
+    policy: null,
+    component: TierBasedApp,
+  },
+  {
+    id: "flow2",
+    title: "Flow 2 · Per Invite Based",
+    status: "Ready to test",
+    statusColor: "#8a2ba8",
+    statusBg: "#fdf0ff",
+    blurb: flow2FlowCardBlurb(FLOW2_POLICY),
+    points: flow2FlowCardPoints(FLOW2_POLICY),
+    enabled: true,
+    policy: FLOW2_POLICY,
+    component: PerInviteApp,
+  },
+  {
+    id: "flow3",
+    title: "Flow 3 · Bulk Capacity Pricing",
+    status: "Ready to test",
+    statusColor: C.gold,
+    statusBg: "#fdf3e6",
+    blurb: flow3FlowCardBlurb(FLOW3_POLICY),
+    points: flow3FlowCardPoints(FLOW3_POLICY),
+    enabled: true,
+    policy: FLOW3_POLICY,
+    component: PerInviteApp,
+  },
+];
+
 // ---------- App ----------
 export default function App() {
-  const [activeFlow, setActiveFlow] = useState(null); // null | "flow1" | "flow2"
+  const [activeFlow, setActiveFlow] = useState(null); // null | flow id
 
-  if (activeFlow === "flow1") {
-    return <TierBasedApp onBackToFlows={() => setActiveFlow(null)} />;
+  const flow = FLOWS.find((f) => f.id === activeFlow);
+  if (flow) {
+    const FlowComponent = flow.component;
+    return (
+      <FlowComponent
+        key={activeFlow}
+        policy={flow.policy}
+        flowLabel={flow.title}
+        onBackToFlows={() => setActiveFlow(null)}
+      />
+    );
   }
-  if (activeFlow === "flow2") {
-    return <PerInviteApp onBackToFlows={() => setActiveFlow(null)} />;
-  }
-  return <FlowSelectScreen onSelectFlow={setActiveFlow} />;
+  return <FlowSelectScreen flows={FLOWS} onSelectFlow={setActiveFlow} />;
 }

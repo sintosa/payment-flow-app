@@ -29,3 +29,15 @@ export function flow2FlowCardPoints(policy) {
     "Guests past the capacity bought are hidden until you buy more",
   ];
 }
+
+export function flow3FlowCardBlurb(policy) {
+  return `Identical screens and steps to Flow 2 - same ${policy.baseRate} (or ${policy.premiumFeaturesRate} with Premium Features) coins/guest, same buy-up-front capacity, same no-refund rule. The only difference: buying more capacity at once lowers the price per guest.`;
+}
+
+export function flow3FlowCardPoints(policy) {
+  return [
+    `Starts from the same per-guest rate (${policy.baseRate} or ${policy.premiumFeaturesRate}) as Flow 2`,
+    "Buying capacity in bulk lowers the price per guest",
+    "Same buy-up-front, no-refund capacity model as Flow 2",
+  ];
+}

@@ -17,6 +17,22 @@ export const FLOW2_POLICY = {
 // reachable on purpose. Flow 1 has its own separate starting balance.
 export const FLOW2_STARTING_BALANCE = 150;
 
+// Same per-guest model as Flow 2, plus a bundle table: buying more capacity at
+// once lowers the price per guest. Discount is a placeholder schedule (shape,
+// not margin) - see docs/pricing note in the flow-select blurb generator.
+export const FLOW3_POLICY = {
+  ...FLOW2_POLICY,
+  id: "flow3",
+  label: "Bulk Capacity Pricing",
+  bundles: [
+    { capacity: 10, discount: 0 },
+    { capacity: 25, discount: 0.1 },
+    { capacity: 50, discount: 0.15 },
+    { capacity: 100, discount: 0.2 },
+    { capacity: 250, discount: 0.25 },
+  ],
+};
+
 export const COIN_PACKS = [
   { coins: 100, price: "$4.99", perCoin: "$0.05 / coin" },
   { coins: 250, price: "$9.99", perCoin: "$0.04 / coin" },
@@ -27,11 +43,37 @@ export function perGuestRate(policy, { premiumFeatures } = {}) {
   return premiumFeatures ? policy.premiumFeaturesRate : policy.baseRate;
 }
 
+// Largest bundle rung at or below `guests`, or null below the smallest rung.
+function bundleRung(bundles, guests) {
+  let rung = null;
+  for (const b of bundles) {
+    if (b.capacity <= guests) rung = b;
+  }
+  return rung;
+}
+
+// The rung's own discount applied to `guests` (not just the rung's own capacity),
+// clamped to the price of the next rung up so a smaller purchase can never cost
+// more than a larger one - that inversion is what a flat band-lookup produces at
+// every rung boundary (24 guests undiscounted > 25 guests at 10% off). The clamp
+// target is itself computed through this same function, so it is exact at every
+// rung (not just the presets a human happens to click) and the recursion bottoms
+// out at the top rung, which has no "next" to clamp against.
+function bundleTotal(bundles, rate, guests) {
+  const rung = bundleRung(bundles, guests);
+  const discount = rung ? rung.discount : 0;
+  const raw = Math.round(guests * rate * (1 - discount));
+  const next = bundles.find((b) => b.capacity > guests);
+  if (!next) return raw;
+  return Math.min(raw, bundleTotal(bundles, rate, next.capacity));
+}
+
 export function quoteGuests(policy, { guests, premiumFeatures, templateId }) {
   const rate = perGuestRate(policy, { premiumFeatures, templateId });
   const listTotal = guests * rate;
-  const discount = 0;
-  return { guests, rate, listTotal, discount, total: listTotal - discount };
+  const total = policy.bundles ? bundleTotal(policy.bundles, rate, guests) : listTotal;
+  const discount = listTotal - total;
+  return { guests, rate, listTotal, discount, total };
 }
 
 // Bill-row labels. A row reads as the thing being bought ("Premium template"), not as a
@@ -42,15 +84,22 @@ const TEMPLATE_LINE_LABEL = { free: "Free template", premium: "Premium template"
 // capacity-only bill (activate / top-up) is quoted without a second bill-builder.
 export function quotePublish(policy, { templateId, premiumFeatures, capacity }) {
   const templateAmount = policy.templatePrice[templateId] ?? 0;
-  const rate = perGuestRate(policy, { premiumFeatures, templateId });
-  const capacityAmount = (capacity || 0) * rate;
+  const guestQuote = quoteGuests(policy, { guests: capacity || 0, premiumFeatures, templateId });
+  const rate = guestQuote.rate;
+  const capacityAmount = guestQuote.total;
 
   const lines = [];
   if (templateAmount > 0) {
     lines.push({ key: "template", label: TEMPLATE_LINE_LABEL[templateId] ?? "Template", amount: templateAmount });
   }
   if (capacityAmount > 0) {
-    lines.push({ key: "capacity", label: "Guest capacity", detail: `${capacity} x ${rate} coins`, amount: capacityAmount });
+    lines.push({
+      key: "capacity",
+      label: "Guest capacity",
+      detail: `${capacity} x ${rate} coins`,
+      amount: capacityAmount,
+      listAmount: guestQuote.listTotal,
+    });
   }
 
   const total = lines.reduce((sum, line) => sum + line.amount, 0);
