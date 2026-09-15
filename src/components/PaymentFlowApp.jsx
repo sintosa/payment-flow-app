@@ -89,7 +89,7 @@ const TEMPLATES_FLOW2 = [
     name: "Golden Hour Soiree",
     tag: "Premium template",
     cost: 60,
-    blurb: "A fully designed premium invite. Premium Features are included free, and it's a flat 2 coins per guest — no rate jump.",
+    blurb: "A fully designed premium invite. It costs 2 coins per guest, or 5 coins per guest when Premium Features are added.",
   },
 ];
 
@@ -397,7 +397,7 @@ function BuyCoinsScreen({ open, coins, packs, selectedPackIndex, onSelectPack, p
         <div className="flex flex-col gap-6 w-[560px]">
           <div
             className="rounded-2xl h-[140px] relative overflow-hidden flex items-center px-6"
-            style={{ background: "linear-gradient(120deg,#dc3728,#f07d9b,#e1b427)" }}
+            style={{ background: "#452C90" }}
           >
             <div className="flex flex-col gap-1 text-white">
               <p className="text-lg">Your Balance</p>
@@ -1280,7 +1280,7 @@ function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPu
 
         <div
           className="w-full rounded-2xl p-4 flex items-center justify-between text-white"
-          style={{ background: "linear-gradient(120deg,#452c90,#3f258d)", display: cost > 0 ? "flex" : "none" }}
+          style={{ background: "#452C90", display: cost > 0 ? "flex" : "none" }}
         >
           <div>
             <p className="text-xs opacity-80">Your Balance</p>
@@ -1350,13 +1350,23 @@ function HighlightRow({ title, subtitle }) {
 }
 
 // ---------- Screen 2.75: Invite Live (Figma screen "9") ----------
-function InviteLiveScreen({ template, onOpenGuests, onOpenDashboard, linkLocked = false, onCopyBlocked }) {
+function InviteLiveScreen({ template, onOpenGuests, onOpenDashboard, linkLocked = false, onCopyBlocked, fullPage = false }) {
   const [copied, setCopied] = useState(false);
   const link = "https://airawath.com/invite/rsvp456";
 
   return (
-    <div className="min-h-[calc(100vh-56px)] flex items-center justify-center p-6">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-10 flex flex-col items-center gap-6">
+    <div className={fullPage ? "min-h-[calc(100vh-56px)] grid grid-cols-1 lg:grid-cols-2 bg-white" : "min-h-[calc(100vh-56px)] flex items-center justify-center p-6"}>
+      {fullPage && (
+        <div className="hidden lg:flex m-8 mr-0 rounded-l-3xl p-10 flex-col justify-between" style={{ background: C.teal }}>
+          <p className="text-5xl font-semibold text-white">Invite preview</p>
+          <div className="rounded-2xl p-7" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.22)" }}>
+            <p className="text-xs uppercase font-semibold tracking-wider text-white/70">{template.tag}</p>
+            <p className="mt-3 text-3xl text-white" style={{ fontFamily: "Georgia, serif" }}>{template.name}</p>
+            <p className="mt-2 text-white/75">You&apos;re invited &middot; RSVP now</p>
+          </div>
+        </div>
+      )}
+      <div className={fullPage ? "w-full max-w-2xl mx-auto p-8 lg:p-12 flex flex-col items-center justify-center gap-6" : "bg-white rounded-3xl shadow-2xl w-full max-w-2xl p-10 flex flex-col items-center gap-6"}>
         <h2 className="text-2xl font-semibold text-center" style={{ color: C.text }}>
           🎊 Your Invite is Live 🎊
         </h2>
@@ -1378,11 +1388,11 @@ function InviteLiveScreen({ template, onOpenGuests, onOpenDashboard, linkLocked 
               setTimeout(() => setCopied(false), 1500);
             }}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold whitespace-nowrap"
-            style={{ background: linkLocked ? "#9aa4ab" : C.text }}
+            style={{ background: C.navy, cursor: "pointer" }}
           >
             {linkLocked ? (
               <>
-                <Lock size={14} /> Set Guest Capacity
+                <PlusCircle size={14} /> Set Guest Capacity
               </>
             ) : copied ? (
               "Copied!"
@@ -1887,17 +1897,17 @@ function TierBasedApp({ onBackToFlows }) {
   const handleToggleSimulateFailure = () => setBuyCoins((b) => ({ ...b, simulateFailure: !b.simulateFailure }));
 
   const handleConfirmBuyCoins = () => {
+    const { selectedPackIndex, simulateFailure } = buyCoins;
+    const credited = COIN_PACKS[selectedPackIndex].coins;
+    const prior = coins;
     setBuyCoins((b) => ({ ...b, processing: true }));
     setTimeout(() => {
-      setBuyCoins((b) => {
-        if (b.simulateFailure) {
-          return { ...b, processing: false, result: "failed" };
-        }
-        const credited = COIN_PACKS[b.selectedPackIndex].coins;
-        const prior = coins;
-        setCoins((c) => c + credited);
-        return { ...b, processing: false, result: "success", priorBalance: prior };
-      });
+      if (simulateFailure) {
+        setBuyCoins((b) => ({ ...b, processing: false, result: "failed" }));
+        return;
+      }
+      setCoins((c) => c + credited);
+      setBuyCoins((b) => ({ ...b, processing: false, result: "success", priorBalance: prior }));
     }, 1100);
   };
 
@@ -2078,7 +2088,7 @@ function FlowSelectScreen({ onSelectFlow }) {
       statusColor: "#8a2ba8",
       statusBg: "#fdf0ff",
       blurb:
-        "Every guest who RSVPs costs coins directly — no tiers. Free templates are 2 coins/guest (5 with Premium Features); Premium templates are always 2 coins/guest. Capacity is locked at publish, and RSVPs beyond it get blurred until you pay to add more.",
+        "Every guest who RSVPs costs coins directly — no tiers. All templates start at 2 coins/guest and rise to 5 with Premium Features. You can pay upfront for expected link RSVPs, and guests blur only when your balance runs out.",
       points: ["Per-guest coin rate (2 or 5), no guest tiers", "Host locks in a guest capacity at publish", "RSVPs beyond capacity are hidden until you add more"],
       enabled: true,
     },
@@ -2154,17 +2164,13 @@ function FlowSelectScreen({ onSelectFlow }) {
 // FLOW 2 — Per Invite Based
 // No guest tiers. Every guest costs coins the moment they're actually
 // added — via Guest Management, or by RSVPing on the public link. Free
-// templates are 2 coins/guest (5 if Premium Features are on); Premium
-// templates are always 2 coins/guest since Premium Features are already
-// included. The host sets a guest capacity before the link can be
-// shared; nothing is charged for that capacity up front — it's just the
-// ceiling. Guests beyond capacity, or guests the balance can't currently
-// cover, are hidden until the host unlocks them.
+// templates are 2 coins/guest (5 if Premium Features are on). Hosts can pay
+// upfront for their expected link RSVPs; later RSVP guests use that prepaid
+// amount first, then the remaining balance, and blur if it runs out.
 // =====================================================================
 
 function getFlow2Rate(template, addonEnabled) {
   if (!template) return 2;
-  if (template.id === "premium") return 2;
   return addonEnabled ? 5 : 2;
 }
 
@@ -2236,40 +2242,20 @@ function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onCont
             <p className="font-semibold mb-3" style={{ color: C.text }}>
               Add-ons
             </p>
-            {template.id === "premium" ? (
-              <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: "#e2d9fe", border: "1px solid #4a3292" }}>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: "#4a3292" }}>
-                  <Check size={14} color="white" />
-                </div>
+            <label
+              className="rounded-xl p-4 flex items-center justify-between gap-3 cursor-pointer"
+              style={{ border: `1px solid ${addonEnabled ? C.teal : C.border}`, background: addonEnabled ? C.tealLight : "white" }}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✨</span>
                 <div>
-                  <p className="text-sm font-bold" style={{ color: C.text }}>
-                    Premium Features included
-                  </p>
-                  <p className="text-xs" style={{ color: "#4a3292" }}>
-                    Polls, Surveys &amp; Broadcast included free. Rate stays 2 coins/guest.
-                  </p>
+                  <p className="text-sm font-bold" style={{ color: C.text }}>Premium Features</p>
+                  <p className="text-xs" style={{ color: C.muted }}>Polls, Surveys &amp; Broadcast for your guests.</p>
                 </div>
               </div>
-            ) : (
-              <label
-                className="rounded-xl p-4 flex items-center justify-between gap-3 cursor-pointer"
-                style={{ border: `1px solid ${addonEnabled ? C.teal : C.border}`, background: addonEnabled ? C.tealLight : "white" }}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">✨</span>
-                  <div>
-                    <p className="text-sm font-bold" style={{ color: C.text }}>
-                      Premium Features
-                    </p>
-                    <p className="text-xs" style={{ color: C.muted }}>
-                      Polls, Surveys &amp; Broadcast for your guests.
-                    </p>
-                  </div>
-                </div>
-                <input type="checkbox" checked={addonEnabled} onChange={onToggleAddon} className="shrink-0" />
-              </label>
-            )}
-            {template.id !== "premium" && addonEnabled && (
+              <input type="checkbox" checked={addonEnabled} onChange={onToggleAddon} className="shrink-0" />
+            </label>
+            {addonEnabled && (
               <p className="text-xs mt-2" style={{ color: C.muted }}>
                 Adding Premium Features raises your rate from 2 to 5 coins per guest who RSVPs.
               </p>
@@ -2310,7 +2296,7 @@ function ConfirmPublishScreenFlow2({ template, addonActive, coins, onPublish, on
             />
             <div style={{ borderTop: `1px solid ${C.border}` }} />
             <HighlightRow
-              title={addonActive ? "Premium Features included" : "Basic features included"}
+              title={addonActive ? "Premium Features added" : "Basic features included"}
               subtitle={addonActive ? "Polls, Surveys & Broadcast are ready to use." : "You can add Premium Features anytime from Edit Template."}
             />
           </div>
@@ -2319,7 +2305,7 @@ function ConfirmPublishScreenFlow2({ template, addonActive, coins, onPublish, on
         {cost > 0 && (
           <div
             className="w-full rounded-2xl p-4 flex items-center justify-between text-white"
-            style={{ background: "linear-gradient(120deg,#452c90,#3f258d)", display: cost > 0 ? "flex" : "none" }}
+            style={{ background: "#452C90", display: cost > 0 ? "flex" : "none" }}
           >
             <div>
               <p className="text-xs opacity-80">Your Balance</p>
@@ -2366,10 +2352,9 @@ function ConfirmPublishScreenFlow2({ template, addonActive, coins, onPublish, on
 }
 
 // ---------- Flow 2: Guest Capacity modal ----------
-// mode "initial": first-time setup, no charge, just sets the ceiling and unlocks the share link.
-// mode "unlock": guests are hidden (over capacity and/or balance couldn't cover them at the time);
-//                paying reveals them and raises capacity to match.
-function GuestCapacityModal({ open, mode, rate, coins, guestCapacity, hiddenCount, neededCapacity = 0, onSetInitial, onUnlock, onClose, onTopUp }) {
+// mode "initial": reserve coins upfront for the host's estimated link RSVPs.
+// mode "unlock": guests are hidden because the remaining balance could not cover them.
+function GuestCapacityModal({ open, mode, rate, coins, guestCapacity, hiddenCount, confirmationCost = 0, onSetInitial, onUnlock, onClose, onTopUp }) {
   const [draft, setDraft] = useState(guestCapacity || 25);
   if (!open) return null;
 
@@ -2377,20 +2362,34 @@ function GuestCapacityModal({ open, mode, rate, coins, guestCapacity, hiddenCoun
   const unlockCost = hiddenCount * rate;
   const canUnlock = coins >= unlockCost;
   const shortfall = Math.max(0, unlockCost - coins);
+  const estimatedCost = draft * rate;
+  const canReserve = coins >= estimatedCost;
+  const reserveShortfall = Math.max(0, estimatedCost - coins);
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(8,8,8,0.45)", zIndex: 50 }} className="flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 flex flex-col gap-5">
-        {mode === "initial" ? (
+        {mode === "sendSuccess" ? (
+          <>
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-xl font-semibold" style={{ color: C.text }}>Invitations sent</h2>
+                <p className="text-sm mt-1" style={{ color: C.muted }}>
+                  {confirmationCost} coin{confirmationCost === 1 ? " has" : "s have"} been deducted from your balance for these invitations.
+                </p>
+              </div>
+              <button onClick={onClose} aria-label="Close"><X size={18} color={C.muted} /></button>
+            </div>
+            <button onClick={onClose} className="w-full h-12 rounded-xl font-semibold text-white" style={{ background: C.navy }}>View dashboard</button>
+          </>
+        ) : mode === "initial" ? (
           <>
             <div>
               <h2 className="text-xl font-semibold" style={{ color: C.text }}>
-                Set your guest capacity
+                Pay for expected RSVPs
               </h2>
               <p className="text-sm mt-1" style={{ color: C.muted }}>
-                Decide how many guests you're planning for. Nothing is charged now —{" "}
-                <strong>{rate} coins are redeemed automatically</strong> each time a guest RSVPs via your link or you
-                add them in Guest Management.
+                Choose how many guests you expect to RSVP through your link. You&apos;ll pay upfront at {rate} coins per guest.
               </p>
             </div>
 
@@ -2431,12 +2430,22 @@ function GuestCapacityModal({ open, mode, rate, coins, guestCapacity, hiddenCoun
               </button>
             </div>
 
-            <div className="rounded-xl px-4 py-3 text-xs" style={{ background: C.tealLight, color: C.teal }}>
-              Estimated max cost if every guest RSVPs: {draft * rate} coins — charged as they actually join, not now.
+            <div className="rounded-xl px-4 py-3 text-sm flex items-center justify-between" style={{ background: C.tealLight, color: C.teal }}>
+              <span>{draft} guests &times; {rate} coins each</span>
+              <span className="flex items-center gap-1 font-bold"><Coin size={16} /> Total: {estimatedCost} coins</span>
             </div>
 
-            <button onClick={() => onSetInitial(draft)} className="w-full h-12 rounded-xl font-semibold text-white" style={{ background: C.navy }}>
-              Set Capacity
+            {!canReserve && (
+              <div className="rounded-xl px-4 py-3 text-sm flex items-center justify-between gap-3" style={{ background: "#fdeceb", color: C.red }}>
+                <span>You&apos;re short {reserveShortfall} coin{reserveShortfall === 1 ? "" : "s"}.</span>
+                <button onClick={() => onTopUp(reserveShortfall)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold" style={{ background: C.gold }}>
+                  <CreditCard size={14} /> Buy Coins
+                </button>
+              </div>
+            )}
+
+            <button onClick={() => canReserve && onSetInitial(draft)} disabled={!canReserve} className="w-full h-12 rounded-xl font-semibold text-white" style={{ background: canReserve ? C.navy : "#9aa4ab" }}>
+              Pay {estimatedCost} Coins
             </button>
           </>
         ) : (
@@ -2448,12 +2457,8 @@ function GuestCapacityModal({ open, mode, rate, coins, guestCapacity, hiddenCoun
                 </h2>
                 <p className="text-sm mt-1" style={{ color: C.muted }}>
                   {mode === "send"
-                    ? `You're inviting ${hiddenCount} guest${hiddenCount === 1 ? "" : "s"} who ${hiddenCount === 1 ? "hasn't" : "haven't"} been paid for yet. Pay to send their invitations.`
-                    : neededCapacity > 0 && coins < hiddenCount * rate
-                    ? `${hiddenCount} guest${hiddenCount === 1 ? " is" : "s are"} hidden — ${neededCapacity} more than your current capacity (${guestCapacity}), and your balance can't yet cover the ${hiddenCount * rate} coins needed.`
-                    : neededCapacity > 0
-                    ? `${hiddenCount} guest${hiddenCount === 1 ? " is" : "s are"} hidden — that's ${neededCapacity} more than your current capacity of ${guestCapacity}. Paying will raise your capacity to match.`
-                    : `${hiddenCount} guest${hiddenCount === 1 ? " is" : "s are"} within your capacity but arrived when your balance was too low to charge them.`}
+                    ? `Sending these invitations will deduct ${unlockCost} coins from your balance.`
+                    : `${hiddenCount} guest${hiddenCount === 1 ? " is" : "s are"} hidden because your balance was too low when they RSVP'd. Add coins to reveal them.`}
                 </p>
               </div>
               <button onClick={onClose} aria-label="Close">
@@ -2491,7 +2496,7 @@ function GuestCapacityModal({ open, mode, rate, coins, guestCapacity, hiddenCoun
               className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
               style={{ background: canUnlock ? C.navy : "#9aa4ab", cursor: canUnlock ? "pointer" : "not-allowed" }}
             >
-              <Coin size={18} /> {mode === "send" ? `Pay ${unlockCost} Coins & Send` : `Unlock for ${unlockCost} Coins`}
+              <Coin size={18} /> {mode === "send" ? `Confirm & Send (${unlockCost} Coins)` : `Unlock for ${unlockCost} Coins`}
             </button>
           </>
         )}
@@ -2650,7 +2655,6 @@ function DashboardScreenFlow2({
   gmTotal,
   gmPaidCount,
   linkChargedCount,
-  guestCapacity,
   rate,
   addonActive,
   coins,
@@ -2689,15 +2693,10 @@ function DashboardScreenFlow2({
     </div>
   );
 
-  const neededCapacityFlow2 = Math.max(0, linkPortion.length - guestCapacity);
   const hiddenReason =
     hidden.length === 0
       ? ""
-      : neededCapacityFlow2 > 0 && coins < hidden.length * rate
-      ? `${neededCapacityFlow2} beyond your capacity of ${guestCapacity}, and your balance can't cover the ${hidden.length * rate} coins needed`
-      : neededCapacityFlow2 > 0
-      ? `${neededCapacityFlow2} beyond your capacity of ${guestCapacity}`
-      : `within capacity, but your balance ran out when they RSVP'd`;
+      : `your balance was too low when they RSVP'd`;
 
   const HiddenBanner = hidden.length > 0 && (
     <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl mb-4" style={{ background: "#ffebea" }}>
@@ -2732,9 +2731,9 @@ function DashboardScreenFlow2({
         </div>
       </div>
 
-      <div className="rounded-2xl px-5 py-3 mb-6 flex items-center justify-between text-white" style={{ background: "linear-gradient(90deg,#4a3292,#4a3292)" }}>
+      <div className="rounded-2xl px-5 py-3 mb-6 flex items-center justify-between text-white" style={{ background: "#452C90" }}>
         <p className="text-sm font-semibold">
-          {linkChargedCount} of {guestCapacity} link capacity used &middot; {gmTotal} added via Guest Management &middot; {guestList.length} total RSVPs
+          {guestList.length} total RSVP{guestList.length === 1 ? "" : "s"}
         </p>
         <button onClick={onInviteMore} className="bg-white text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ color: C.text }}>
           Invite More Guests
@@ -2960,11 +2959,6 @@ function DashboardScreenFlow2({
       {tab === "broadcast" &&
         (addonActive ? (
           <div className="rounded-2xl p-6" style={{ background: C.bg }}>
-            {template.id === "premium" && (
-              <p className="text-xs font-semibold mb-3" style={{ color: C.teal }}>
-                Included free with your Premium template.
-              </p>
-            )}
             <p className="text-sm font-semibold mb-2" style={{ color: C.text }}>
               Send a broadcast to all guests
             </p>
@@ -2988,7 +2982,7 @@ function DashboardScreenFlow2({
               <Coin size={16} /> Switch on Premium Features
             </button>
             <p className="text-xs" style={{ color: C.muted }}>
-              Raises your rate to 5 coins/guest going forward (free templates only).
+              Raises your rate to 5 coins/guest going forward.
             </p>
           </div>
         ))}
@@ -3004,16 +2998,15 @@ function PerInviteApp({ onBackToFlows }) {
   const [template, setTemplate] = useState(null);
   const [addonEnabled, setAddonEnabled] = useState(false);
 
-  const [guestCapacity, setGuestCapacity] = useState(0); // 0 = not set yet; reserved slots for the PUBLIC LINK only
+  const [guestCapacity, setGuestCapacity] = useState(0); // Approximate number of link RSVPs paid for upfront.
   const [gmPaidCount, setGmPaidCount] = useState(0); // Guest Management guests already paid for (uncapped)
-  const [linkChargedCount, setLinkChargedCount] = useState(0); // link guests already charged (bounded by guestCapacity)
+  const [linkChargedCount, setLinkChargedCount] = useState(0); // link guests currently revealed/paid for
   const [selected, setSelected] = useState(new Set());
   const [bulkGuests, setBulkGuests] = useState(0);
   const [linkGuests, setLinkGuests] = useState(0);
 
   const [capacityModal, setCapacityModal] = useState({ open: false, mode: "initial" });
   const [premiumUpgradeModalOpen, setPremiumUpgradeModalOpen] = useState(false);
-  const [pendingAdd, setPendingAdd] = useState(null); // queued link-guest add, retried after capacity is set
 
   const [buyCoins, setBuyCoins] = useState({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
   const [profileOpen, setProfileOpen] = useState(false);
@@ -3026,11 +3019,11 @@ function PerInviteApp({ onBackToFlows }) {
   const linkPending = Math.max(0, linkGuests - linkChargedCount);
   const hiddenCount = gmPending + linkPending;
   const chargedCount = gmPaidCount + linkChargedCount; // total charged, across both pools
-  const addonActive = template ? template.id === "premium" || addonEnabled : false;
+  const addonActive = addonEnabled;
 
   const handleSelectTemplate = (t) => {
     setTemplate(t);
-    setAddonEnabled(t.id === "premium");
+    setAddonEnabled(false);
     setScreen("editTemplate");
   };
 
@@ -3057,49 +3050,39 @@ function PerInviteApp({ onBackToFlows }) {
   const handleBulkAdd = (n) => setBulkGuests((b) => b + n);
   const handleBulkClear = () => setBulkGuests(0);
 
-  // ---- Public link RSVP: requires capacity to be set (via Copy Link) first. ----
-  // Charged only if the link's own reserved capacity + current balance allow it right now —
-  // Guest Management guests never count against this capacity, and vice versa.
+  // ---- Public link RSVP: the estimated RSVPs are prepaid. Further RSVP guests
+  // charge the remaining balance one by one; once it cannot cover another guest,
+  // that guest remains in the list but is blurred until the host tops up. ----
   const tryChargeLinkGuest = (capacityOverride) => {
-    const cap = capacityOverride ?? guestCapacity;
-    const capacityRoom = Math.max(0, cap - linkChargedCount);
-    if (capacityRoom > 0 && coins >= rate) {
-      setCoins((c) => c - rate);
+    const prepaidSlots = capacityOverride ?? guestCapacity;
+    const usesPrepaidSlot = linkGuests < prepaidSlots;
+    if (usesPrepaidSlot || coins >= rate) {
+      if (!usesPrepaidSlot) setCoins((c) => c - rate);
       setLinkChargedCount((c) => c + 1);
     }
   };
 
   const handleAddLinkGuest = () => {
-    if (guestCapacity === 0) {
-      setPendingAdd({ applyFn: () => setLinkGuests((n) => n + 1) });
-      setCapacityModal({ open: true, mode: "initial" });
-      return;
-    }
     setLinkGuests((n) => n + 1);
     tryChargeLinkGuest();
   };
 
   // ---- Guest capacity modal handlers ----
   const handleSetInitialCapacity = (n) => {
+    const cost = n * rate;
+    if (coins < cost) return;
+    setCoins((c) => c - cost);
     setGuestCapacity(n);
     setCapacityModal({ open: false, mode: "initial" });
-    if (pendingAdd) {
-      const { applyFn } = pendingAdd;
-      setPendingAdd(null);
-      applyFn();
-      tryChargeLinkGuest(n);
-    }
   };
 
-  // Pays for every currently-unpaid guest — Guest Management guests are simply paid in
-  // full (uncapped), and link guests are paid up to however many are pending, raising
-  // the link's own capacity to match. The two pools never interfere with each other.
+  // Pays for every currently-unpaid guest. The initial link estimate stays an estimate;
+  // revealing later RSVPs never changes it.
   const handleUnlockHiddenGuests = () => {
     const cost = hiddenCount * rate;
     if (coins < cost) return;
     setCoins((c) => c - cost);
     setGmPaidCount(gmTotal);
-    setGuestCapacity((c) => Math.max(c, linkGuests));
     setLinkChargedCount(linkGuests);
     setCapacityModal({ open: false, mode: "initial" });
     if (screen === "guestManagement") {
@@ -3125,7 +3108,7 @@ function PerInviteApp({ onBackToFlows }) {
     if (coins < cost) return;
     setCoins((c) => c - cost);
     setGmPaidCount(gmTotal);
-    setCapacityModal({ open: false, mode: "initial" });
+    setCapacityModal({ open: true, mode: "sendSuccess", confirmationCost: cost });
     setDashboardTab("guests");
     setScreen("dashboard");
   };
@@ -3162,15 +3145,17 @@ function PerInviteApp({ onBackToFlows }) {
   const handleSelectPack = (i) => setBuyCoins((b) => ({ ...b, selectedPackIndex: i }));
   const handleToggleSimulateFailure = () => setBuyCoins((b) => ({ ...b, simulateFailure: !b.simulateFailure }));
   const handleConfirmBuyCoins = () => {
+    const { selectedPackIndex, simulateFailure } = buyCoins;
+    const credited = COIN_PACKS[selectedPackIndex].coins;
+    const prior = coins;
     setBuyCoins((b) => ({ ...b, processing: true }));
     setTimeout(() => {
-      setBuyCoins((b) => {
-        if (b.simulateFailure) return { ...b, processing: false, result: "failed" };
-        const credited = COIN_PACKS[b.selectedPackIndex].coins;
-        const prior = coins;
-        setCoins((c) => c + credited);
-        return { ...b, processing: false, result: "success", priorBalance: prior };
-      });
+      if (simulateFailure) {
+        setBuyCoins((b) => ({ ...b, processing: false, result: "failed" }));
+        return;
+      }
+      setCoins((c) => c + credited);
+      setBuyCoins((b) => ({ ...b, processing: false, result: "success", priorBalance: prior }));
     }, 1100);
   };
   const handleTryPaymentAgain = () => {
@@ -3196,7 +3181,6 @@ function PerInviteApp({ onBackToFlows }) {
     setBulkGuests(0);
     setLinkGuests(0);
     setCapacityModal({ open: false, mode: "initial" });
-    setPendingAdd(null);
     setPremiumUpgradeModalOpen(false);
     setBuyCoins({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
     setProfileOpen(false);
@@ -3218,7 +3202,7 @@ function PerInviteApp({ onBackToFlows }) {
           coins={coins}
           onSelect={handleSelectTemplate}
           templates={TEMPLATES_FLOW2}
-          subtitle="Every guest who RSVPs costs coins — Free templates are 2/guest (5 with Premium Features), Premium templates are always 2/guest."
+          subtitle="Every guest who RSVPs costs coins — 2/guest by default, or 5/guest with Premium Features."
         />
       )}
 
@@ -3246,6 +3230,7 @@ function PerInviteApp({ onBackToFlows }) {
       {screen === "live" && template && (
         <InviteLiveScreen
           template={template}
+          fullPage
           linkLocked={guestCapacity === 0}
           onCopyBlocked={handleCopyBlocked}
           onOpenGuests={() => setScreen("guestManagement")}
@@ -3277,7 +3262,6 @@ function PerInviteApp({ onBackToFlows }) {
           gmTotal={gmTotal}
           gmPaidCount={gmPaidCount}
           linkChargedCount={linkChargedCount}
-          guestCapacity={guestCapacity}
           rate={rate}
           addonActive={addonActive}
           coins={coins}
@@ -3297,7 +3281,7 @@ function PerInviteApp({ onBackToFlows }) {
         coins={coins}
         guestCapacity={guestCapacity}
         hiddenCount={capacityModal.mode === "send" ? gmPending : hiddenCount}
-        neededCapacity={Math.max(0, linkGuests - guestCapacity)}
+        confirmationCost={capacityModal.confirmationCost}
         onSetInitial={handleSetInitialCapacity}
         onUnlock={capacityModal.mode === "send" ? handleConfirmSendInvite : handleUnlockHiddenGuests}
         onClose={() => setCapacityModal({ open: false, mode: "initial" })}
