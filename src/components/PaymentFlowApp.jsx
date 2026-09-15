@@ -165,7 +165,7 @@ const SPECIAL_REQUESTS = [
 function LockBlur({ locked, label, onUpgrade, children }) {
   if (!locked) return children;
   return (
-    <div className="relative rounded-2xl overflow-hidden">
+    <div className="relative rounded-2xl overflow-hidden min-h-[132px]">
       <div style={{ filter: "blur(4px)", pointerEvents: "none", userSelect: "none" }}>{children}</div>
       <div
         className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center"
