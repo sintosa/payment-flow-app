@@ -95,8 +95,8 @@ const TEMPLATES_FLOW2 = [
 
 const TIER_CARDS = [
   { level: 0, label: "FREE", cost: 0, range: "0–50 guests", benefit: "Create your event and invite up to 50 guests for free." },
-  { level: 1, label: "BASIC", cost: 30, range: "50–150 guests", benefit: "Invite up to 150 guests with RSVP details and dashboard." },
-  { level: 2, label: "PREMIUM", cost: 60, range: "150–250 guests", benefit: "Invite up to 250 guests with every feature fully unlocked." },
+  { level: 1, label: "BASIC", cost: 30, range: "51–150 guests", benefit: "Invite 51–150 guests with RSVP details and dashboard." },
+  { level: 2, label: "PREMIUM", cost: 60, range: "151+ guests", benefit: "Invite 151 or more guests with every feature fully unlocked." },
 ];
 
 // ---------- Tier logic ----------
@@ -109,7 +109,7 @@ function getRequiredTier(guestCount) {
   return TIER_CARDS[2];
 }
 
-const CAP_BY_LEVEL = [50, 150, 250];
+const CAP_BY_LEVEL = [50, 150, Infinity];
 
 // ---------- Derived guest data (used by the Guest List + RSVP Summary views) ----------
 function buildGuestList(selected, bulkGuests, linkGuests = 0) {
@@ -1025,7 +1025,7 @@ function GuestManagementScreen({
   onSendInvite,
   onBack,
 }) {
-  const atCap = guestCount >= CAP_BY_LEVEL[paidLevel] && paidLevel < 2;
+  const atCap = guestCount > CAP_BY_LEVEL[paidLevel] && paidLevel < 2;
   return (
     <div>
       <div className="flex items-center justify-between px-8 py-3 border-b" style={{ borderColor: C.border }}>
