@@ -1869,18 +1869,20 @@ function TierBasedApp({ onBackToFlows }) {
 
   const handleToggleSimulateFailure = () => setBuyCoins((b) => ({ ...b, simulateFailure: !b.simulateFailure }));
 
+  // The credit is applied outside the setBuyCoins updater on purpose. React
+  // may invoke an updater more than once for the same update, so a setCoins
+  // call inside one lands the pack twice - a 100-coin pack credited 200.
   const handleConfirmBuyCoins = () => {
     setBuyCoins((b) => ({ ...b, processing: true }));
     setTimeout(() => {
-      setBuyCoins((b) => {
-        if (b.simulateFailure) {
-          return { ...b, processing: false, result: "failed" };
-        }
-        const credited = COIN_PACKS[b.selectedPackIndex].coins;
-        const prior = coins;
-        setCoins((c) => c + credited);
-        return { ...b, processing: false, result: "success", priorBalance: prior };
-      });
+      if (buyCoins.simulateFailure) {
+        setBuyCoins((b) => ({ ...b, processing: false, result: "failed" }));
+        return;
+      }
+      const credited = COIN_PACKS[buyCoins.selectedPackIndex].coins;
+      const prior = coins;
+      setCoins((c) => c + credited);
+      setBuyCoins((b) => ({ ...b, processing: false, result: "success", priorBalance: prior }));
     }, 1100);
   };
 
@@ -3189,16 +3191,19 @@ function PerInviteApp({ policy, flowLabel, onBackToFlows }) {
   };
   const handleSelectPack = (i) => setBuyCoins((b) => ({ ...b, selectedPackIndex: i }));
   const handleToggleSimulateFailure = () => setBuyCoins((b) => ({ ...b, simulateFailure: !b.simulateFailure }));
+  // Credit applied outside the setBuyCoins updater - see the note on Flow 1's
+  // copy of this handler. A setCoins inside an updater credits the pack twice.
   const handleConfirmBuyCoins = () => {
     setBuyCoins((b) => ({ ...b, processing: true }));
     setTimeout(() => {
-      setBuyCoins((b) => {
-        if (b.simulateFailure) return { ...b, processing: false, result: "failed" };
-        const credited = COIN_PACKS[b.selectedPackIndex].coins;
-        const prior = coins;
-        setCoins((c) => c + credited);
-        return { ...b, processing: false, result: "success", priorBalance: prior };
-      });
+      if (buyCoins.simulateFailure) {
+        setBuyCoins((b) => ({ ...b, processing: false, result: "failed" }));
+        return;
+      }
+      const credited = COIN_PACKS[buyCoins.selectedPackIndex].coins;
+      const prior = coins;
+      setCoins((c) => c + credited);
+      setBuyCoins((b) => ({ ...b, processing: false, result: "success", priorBalance: prior }));
     }, 1100);
   };
   const handleTryPaymentAgain = () => {
