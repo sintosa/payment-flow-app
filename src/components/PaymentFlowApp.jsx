@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { Lock, ArrowLeft, Check, Users, X, UploadCloud, RotateCcw, PlusCircle, Radio, ListChecks, AlertTriangle, CreditCard, ShieldCheck, Mail, Phone, KeyRound, LogOut, Trash2, UserCircle2 } from "lucide-react";
-import { FLOW2_POLICY, STARTING_BALANCE, COIN_PACKS, perGuestRate, buildTemplates } from "@/pricing/policy";
-import { flow2PremiumFeaturesIncludedNote, flow2AddonRateChangeNote, flow2AddonUpsellNote, flow2TemplateScreenSubtitle } from "@/pricing/copy";
+import { FLOW2_POLICY, FLOW2_STARTING_BALANCE, COIN_PACKS, perGuestRate, buildTemplates } from "@/pricing/policy";
+import { flow2AddonRateChangeNote, flow2AddonUpsellNote, flow2TemplateScreenSubtitle, flow2FlowCardBlurb, flow2FlowCardPoints } from "@/pricing/copy";
 
 // ---------- Design tokens (matched to the Airawath Figma file) ----------
 const C = {
@@ -1730,10 +1730,14 @@ function DashboardScreen({
 }
 
 // ---------- App ----------
+// Flow 1's own starting balance, independent of Flow 2's (FLOW2_STARTING_BALANCE
+// in pricing/policy.js) — the two flows price differently and must not share one.
+const FLOW1_STARTING_BALANCE = 100;
+
 function TierBasedApp({ onBackToFlows }) {
   const [screen, setScreen] = useState("template"); // template | editTemplate | confirm | live | dashboard | guestManagement
   const [dashboardTab, setDashboardTab] = useState("guests");
-  const [coins, setCoins] = useState(STARTING_BALANCE);
+  const [coins, setCoins] = useState(FLOW1_STARTING_BALANCE);
   const [template, setTemplate] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [bulkGuests, setBulkGuests] = useState(0);
@@ -1843,7 +1847,7 @@ function TierBasedApp({ onBackToFlows }) {
   const handleReset = () => {
     setScreen("template");
     setDashboardTab("guests");
-    setCoins(STARTING_BALANCE);
+    setCoins(FLOW1_STARTING_BALANCE);
     setTemplate(null);
     setSelected(new Set());
     setBulkGuests(0);
@@ -2058,9 +2062,8 @@ function FlowSelectScreen({ onSelectFlow }) {
       status: "Ready to test",
       statusColor: "#8a2ba8",
       statusBg: "#fdf0ff",
-      blurb:
-        "Every guest who RSVPs costs coins directly — no tiers. Free templates are 2 coins/guest (5 with Premium Features); Premium templates are always 2 coins/guest. Capacity is locked at publish, and RSVPs beyond it get blurred until you pay to add more.",
-      points: ["Per-guest coin rate (2 or 5), no guest tiers", "Host locks in a guest capacity at publish", "RSVPs beyond capacity are hidden until you add more"],
+      blurb: flow2FlowCardBlurb(FLOW2_POLICY),
+      points: flow2FlowCardPoints(FLOW2_POLICY),
       enabled: true,
     },
   ];
@@ -2134,13 +2137,13 @@ function FlowSelectScreen({ onSelectFlow }) {
 // =====================================================================
 // FLOW 2 — Per Invite Based
 // No guest tiers. Every guest costs coins the moment they're actually
-// added — via Guest Management, or by RSVPing on the public link. Free
-// templates are 2 coins/guest (5 if Premium Features are on); Premium
-// templates are always 2 coins/guest since Premium Features are already
-// included. The host sets a guest capacity before the link can be
-// shared; nothing is charged for that capacity up front — it's just the
-// ceiling. Guests beyond capacity, or guests the balance can't currently
-// cover, are hidden until the host unlocks them.
+// added — via Guest Management, or by RSVPing on the public link. Every
+// template is 2 coins/guest (5 if Premium Features are on) — the premium
+// template's price buys the design only, not the features. The host sets
+// a guest capacity before the link can be shared; nothing is charged for
+// that capacity up front — it's just the ceiling. Guests beyond capacity,
+// or guests the balance can't currently cover, are hidden until the host
+// unlocks them.
 // =====================================================================
 
 function getFlow2Rate(template, addonEnabled) {
@@ -2215,40 +2218,24 @@ function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onCont
             <p className="font-semibold mb-3" style={{ color: C.text }}>
               Add-ons
             </p>
-            {template.id === "premium" ? (
-              <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: "#e2d9fe", border: "1px solid #4a3292" }}>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: "#4a3292" }}>
-                  <Check size={14} color="white" />
-                </div>
+            <label
+              className="rounded-xl p-4 flex items-center justify-between gap-3 cursor-pointer"
+              style={{ border: `1px solid ${addonEnabled ? C.teal : C.border}`, background: addonEnabled ? C.tealLight : "white" }}
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✨</span>
                 <div>
                   <p className="text-sm font-bold" style={{ color: C.text }}>
-                    Premium Features included
+                    Premium Features
                   </p>
-                  <p className="text-xs" style={{ color: "#4a3292" }}>
-                    {flow2PremiumFeaturesIncludedNote(FLOW2_POLICY)}
+                  <p className="text-xs" style={{ color: C.muted }}>
+                    Polls, Surveys &amp; Broadcast for your guests.
                   </p>
                 </div>
               </div>
-            ) : (
-              <label
-                className="rounded-xl p-4 flex items-center justify-between gap-3 cursor-pointer"
-                style={{ border: `1px solid ${addonEnabled ? C.teal : C.border}`, background: addonEnabled ? C.tealLight : "white" }}
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">✨</span>
-                  <div>
-                    <p className="text-sm font-bold" style={{ color: C.text }}>
-                      Premium Features
-                    </p>
-                    <p className="text-xs" style={{ color: C.muted }}>
-                      Polls, Surveys &amp; Broadcast for your guests.
-                    </p>
-                  </div>
-                </div>
-                <input type="checkbox" checked={addonEnabled} onChange={onToggleAddon} className="shrink-0" />
-              </label>
-            )}
-            {template.id !== "premium" && addonEnabled && (
+              <input type="checkbox" checked={addonEnabled} onChange={onToggleAddon} className="shrink-0" />
+            </label>
+            {addonEnabled && (
               <p className="text-xs mt-2" style={{ color: C.muted }}>
                 {flow2AddonRateChangeNote(FLOW2_POLICY)}
               </p>
@@ -2939,11 +2926,6 @@ function DashboardScreenFlow2({
       {tab === "broadcast" &&
         (addonActive ? (
           <div className="rounded-2xl p-6" style={{ background: C.bg }}>
-            {template.id === "premium" && (
-              <p className="text-xs font-semibold mb-3" style={{ color: C.teal }}>
-                Included free with your Premium template.
-              </p>
-            )}
             <p className="text-sm font-semibold mb-2" style={{ color: C.text }}>
               Send a broadcast to all guests
             </p>
@@ -2979,7 +2961,7 @@ function DashboardScreenFlow2({
 function PerInviteApp({ onBackToFlows }) {
   const [screen, setScreen] = useState("template"); // template | editTemplate | confirm | live | guestManagement | dashboard
   const [dashboardTab, setDashboardTab] = useState("guests");
-  const [coins, setCoins] = useState(STARTING_BALANCE);
+  const [coins, setCoins] = useState(FLOW2_STARTING_BALANCE);
   const [template, setTemplate] = useState(null);
   const [addonEnabled, setAddonEnabled] = useState(false);
 
@@ -3005,11 +2987,11 @@ function PerInviteApp({ onBackToFlows }) {
   const linkPending = Math.max(0, linkGuests - linkChargedCount);
   const hiddenCount = gmPending + linkPending;
   const chargedCount = gmPaidCount + linkChargedCount; // total charged, across both pools
-  const addonActive = template ? template.id === "premium" || addonEnabled : false;
+  const addonActive = template ? addonEnabled : false;
 
   const handleSelectTemplate = (t) => {
     setTemplate(t);
-    setAddonEnabled(t.id === "premium");
+    setAddonEnabled(false);
     setScreen("editTemplate");
   };
 
@@ -3165,7 +3147,7 @@ function PerInviteApp({ onBackToFlows }) {
   const handleReset = () => {
     setScreen("template");
     setDashboardTab("guests");
-    setCoins(STARTING_BALANCE);
+    setCoins(FLOW2_STARTING_BALANCE);
     setTemplate(null);
     setAddonEnabled(false);
     setGuestCapacity(0);

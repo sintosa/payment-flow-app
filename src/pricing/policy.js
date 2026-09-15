@@ -6,13 +6,16 @@ export const FLOW2_POLICY = {
   baseRate: 2,
   premiumFeaturesRate: 5,
   templatePrice: { free: 0, premium: 60 },
-  premiumTemplateIncludesFeatures: true,
+  premiumTemplateIncludesFeatures: false,
   capacityPresets: [10, 25, 50, 100, 250],
   stepperStep: 5,
   bundles: null,
 };
 
-export const STARTING_BALANCE = 100;
+// 60 (premium template) + 50 (default 25-guest capacity at the base rate) = 110,
+// so the balance has to clear that before the shortfall path (large capacity) is
+// reachable on purpose. Flow 1 has its own separate starting balance.
+export const FLOW2_STARTING_BALANCE = 150;
 
 export const COIN_PACKS = [
   { coins: 100, price: "$4.99", perCoin: "$0.05 / coin" },
@@ -20,9 +23,7 @@ export const COIN_PACKS = [
   { coins: 500, price: "$14.99", perCoin: "$0.03 / coin", badge: "Best Value" },
 ];
 
-export function perGuestRate(policy, { premiumFeatures, templateId } = {}) {
-  if (!templateId) return policy.baseRate;
-  if (templateId === "premium") return policy.baseRate;
+export function perGuestRate(policy, { premiumFeatures } = {}) {
   return premiumFeatures ? policy.premiumFeaturesRate : policy.baseRate;
 }
 
@@ -50,8 +51,9 @@ export function quotePublish(policy, { templateId, premiumFeatures, capacity }) 
   return { lines, total };
 }
 
-// templateId is load-bearing: perGuestRate returns the base rate when it is
-// absent, so omitting it here made the upgrade free at every slot count.
+// templateId no longer affects the rate (Premium Features cost the same on
+// any template) but stays in the signature so callers can pass the same
+// options shape they use for quotePublish/quoteGuests.
 export function quotePremiumUpgrade(policy, { paidSlots, templateId }) {
   const oldRate = perGuestRate(policy, { premiumFeatures: false, templateId });
   const newRate = perGuestRate(policy, { premiumFeatures: true, templateId });
