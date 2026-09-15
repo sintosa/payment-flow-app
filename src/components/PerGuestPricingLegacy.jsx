@@ -776,7 +776,7 @@ function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Bo
           const affordable = coins >= t.cost;
           return (
             <div key={t.id} className="bg-white rounded-2xl p-6 flex flex-col" style={{ border: `1px solid ${C.border}` }}>
-              <img src={t.id === "premium" ? "/templates/paid.png" : "/templates/free.png"} alt={`${t.name} invitation preview`} className="h-56 w-full rounded-xl mb-4 object-cover object-top" />
+              <img src={t.id === "premium" ? "/templates/paid.png" : "/templates/free.png"} alt={`${t.name} invitation preview`} className="h-[420px] w-full rounded-xl mb-4 object-contain" />
               <p className="text-xs font-semibold uppercase mb-1" style={{ color: C.muted }}>
                 {t.tag}
               </p>
@@ -2248,6 +2248,9 @@ export function CapacityScreen({
   onSkip,
   onClose,
   onTopUp,
+  titleOverride,
+  intro,
+  footer,
 }) {
   // Seeded once per mount, and this component only mounts when the host enters the step -
   // so there is no stale-draft resync problem to solve. Do not hoist this above a guard.
@@ -2317,8 +2320,9 @@ export function CapacityScreen({
       <div className="flex justify-center px-6 py-10">
         <div className="bg-white rounded-3xl w-full max-w-md p-8 flex flex-col gap-8" style={{ border: `1px solid ${C.border}` }}>
           <h2 className="text-2xl font-bold" style={{ color: C.text }}>
-            {copy.title}
+            {titleOverride ?? copy.title}
           </h2>
+          {intro && <p className="-mt-5 text-sm" style={{ color: C.muted }}>{intro}</p>}
 
           {/* Choosing the amount. One group: label, presets, stepper, and the note that
               explains why the host is here. Separated from the price below by the card gap. */}
@@ -2495,6 +2499,7 @@ export function CapacityScreen({
                 )}
               </div>
             )}
+            {footer && <p className="-mt-3 text-xs text-center" style={{ color: C.muted }}>{footer}</p>}
           </div>
         </div>
       </div>

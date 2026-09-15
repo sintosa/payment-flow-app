@@ -853,7 +853,7 @@ function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Bo
               <img
                 src={t.id === "premium" ? "/templates/paid.png" : "/templates/free.png"}
                 alt={`${t.name} invitation preview`}
-                className="h-56 w-full rounded-xl mb-4 object-cover object-top"
+                className="h-[420px] w-full rounded-xl mb-4 object-contain"
               />
               <p className="text-xs font-semibold uppercase mb-1" style={{ color: C.muted }}>
                 {t.tag}
@@ -1191,6 +1191,17 @@ function GuestListPanel({ guestList, paidLevel, onInviteMore, onUpgrade, linkGue
           Invite More Guests
         </button>
       </div>
+      {hidden.length > 0 && (
+        <div className="mb-3">
+          <LockBlur locked label={`Unlock to see ${hidden.length} more guest${hidden.length === 1 ? "" : "s"}`} onUpgrade={onUpgrade}>
+            <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
+              {hidden.slice(0, 3).map((g) => (
+                <Row key={g.id} g={g} />
+              ))}
+            </div>
+          </LockBlur>
+        </div>
+      )}
       <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
         <div className="grid grid-cols-3 px-4 py-3 text-xs font-semibold" style={{ background: C.bg, color: C.muted }}>
           <span>Full Name</span>
@@ -1201,18 +1212,6 @@ function GuestListPanel({ guestList, paidLevel, onInviteMore, onUpgrade, linkGue
           <Row key={g.id} g={g} />
         ))}
       </div>
-
-      {hidden.length > 0 && (
-        <div className="mt-3">
-          <LockBlur locked label={`Unlock to see ${hidden.length} more guest${hidden.length === 1 ? "" : "s"}`} onUpgrade={onUpgrade}>
-            <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
-              {hidden.slice(0, 3).map((g) => (
-                <Row key={g.id} g={g} />
-              ))}
-            </div>
-          </LockBlur>
-        </div>
-      )}
     </div>
   );
 }
@@ -2776,6 +2775,23 @@ function DashboardScreenFlow2({
             <p className="font-semibold mb-3" style={{ color: C.text }}>
               Guest List &middot; {guestList.length} total
             </p>
+            {hidden.length > 0 && (
+              <div className="mb-3">
+                <LockBlur locked label={`${hidden.length} guests hidden — unlock to reveal`} onUpgrade={onOpenUnlockModal}>
+                  <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
+                    {hidden.slice(0, 3).map((g) => (
+                      <div key={g.id} className="grid grid-cols-3 items-center px-4 py-3 text-sm" style={{ borderTop: `1px solid ${C.border}` }}>
+                        <span style={{ color: C.text }}>{g.name}</span>
+                        <span style={{ color: C.muted }}>{g.email}</span>
+                        <span className="text-xs font-semibold px-2 py-1 rounded w-fit" style={{ background: STATUS_STYLE[g.status].bg, color: STATUS_STYLE[g.status].color }}>
+                          {g.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </LockBlur>
+              </div>
+            )}
             <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
               <div className="grid grid-cols-3 px-4 py-3 text-xs font-semibold" style={{ background: C.bg, color: C.muted }}>
                 <span>Full Name</span>
@@ -2792,23 +2808,6 @@ function DashboardScreenFlow2({
                 </div>
               ))}
             </div>
-            {hidden.length > 0 && (
-              <div className="mt-3">
-                <LockBlur locked label={`${hidden.length} guests hidden — unlock to reveal`} onUpgrade={onOpenUnlockModal}>
-                  <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
-                    {hidden.slice(0, 3).map((g) => (
-                      <div key={g.id} className="grid grid-cols-3 items-center px-4 py-3 text-sm" style={{ borderTop: `1px solid ${C.border}` }}>
-                        <span style={{ color: C.text }}>{g.name}</span>
-                        <span style={{ color: C.muted }}>{g.email}</span>
-                        <span className="text-xs font-semibold px-2 py-1 rounded w-fit" style={{ background: STATUS_STYLE[g.status].bg, color: STATUS_STYLE[g.status].color }}>
-                          {g.status}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </LockBlur>
-              </div>
-            )}
           </div>
         ))}
 
@@ -3032,8 +3031,8 @@ function PerInviteApp({ onBackToFlows }) {
   const handleToggleAddon = () => setAddonEnabled((v) => !v);
 
   const handleFinishEditTemplate = () => {
-    setCapacityStep("publish");
-    setScreen("capacity");
+    if (template.cost > 0) setScreen("confirm");
+    else setScreen("live");
   };
 
   const handlePublish = () => {
@@ -3255,13 +3254,15 @@ function PerInviteApp({ onBackToFlows }) {
         <CapacityScreen
           mode={capacityStep}
           coins={coins}
-          skipAmount={capacityStep === "publish" ? template.cost : 0}
           quote={quoteCapacity}
           rateRows={addonEnabled ? [{ label: "Base invite rate", amount: "2 coins" }, { label: "Premium Features", amount: "+3 coins" }, { label: "Per-guest rate", amount: "5 coins", total: true }] : [{ label: "Base invite rate", amount: "2 coins", total: true }]}
           onPay={handlePayCapacity}
           onSkip={handleSkipCapacity}
           onClose={() => setScreen(capacityStep === "publish" ? "editTemplate" : "live")}
           onTopUp={handleOpenBuyCoins}
+          titleOverride="Pay for expected RSVPs"
+          intro="Choose how many guests you expect to send this invitation link to."
+          footer="You can increase this number later on."
         />
       )}
 
