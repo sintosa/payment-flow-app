@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Lock, ArrowLeft, Check, Users, X, UploadCloud, RotateCcw, PlusCircle, Radio, ListChecks, AlertTriangle, CreditCard, ShieldCheck, Mail, Phone, KeyRound, LogOut, Trash2, UserCircle2 } from "lucide-react";
-import { PerGuestPricingFlow } from "./PerGuestPricingLegacy";
+import { CapacityScreen, CoinBreakdown, PerGuestPricingFlow } from "./PerGuestPricingLegacy";
 
 // ---------- Design tokens (matched to the Airawath Figma file) ----------
 const C = {
@@ -850,16 +850,11 @@ function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Bo
           const affordable = coins >= t.cost;
           return (
             <div key={t.id} className="bg-white rounded-2xl p-6 flex flex-col" style={{ border: `1px solid ${C.border}` }}>
-              <div
-                className="h-40 rounded-xl mb-4 flex items-center justify-center"
-                style={{
-                  background: t.id === "premium" ? "linear-gradient(135deg,#e2d9fe,#c1b6e1)" : C.tealLight,
-                }}
-              >
-                <p className="text-sm font-semibold" style={{ color: t.id === "premium" ? "#4a3292" : C.teal }}>
-                  {t.id === "premium" ? "✨ Premium layout preview" : "Simple layout preview"}
-                </p>
-              </div>
+              <img
+                src={t.id === "premium" ? "/templates/paid.png" : "/templates/free.png"}
+                alt={`${t.name} invitation preview`}
+                className="h-56 w-full rounded-xl mb-4 object-cover object-top"
+              />
               <p className="text-xs font-semibold uppercase mb-1" style={{ color: C.muted }}>
                 {t.tag}
               </p>
@@ -916,13 +911,8 @@ function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, on
 
       <div className="grid grid-cols-[1fr_420px] gap-8 px-8 py-6">
         {/* left preview */}
-        <div className="rounded-2xl flex flex-col items-center justify-center gap-3 p-10" style={{ background: C.bg }}>
-          <p className="text-xs uppercase font-semibold" style={{ color: C.muted }}>
-            {template.tag}
-          </p>
-          <p className="text-xl font-semibold text-center" style={{ color: C.text }}>
-            {template.name}
-          </p>
+        <div className="rounded-2xl flex items-center justify-center p-6" style={{ background: C.bg }}>
+          <img src={template.id === "premium" ? "/templates/paid.png" : "/templates/free.png"} alt={`${template.name} invitation preview`} className="max-h-[480px] rounded-xl object-contain shadow-sm" />
         </div>
 
         {/* right: edit panel */}
@@ -2173,11 +2163,9 @@ function FlowSelectScreen({ onSelectFlow }) {
 
 // =====================================================================
 // FLOW 2 — Per Invite Based
-// No guest tiers. Every guest costs coins the moment they're actually
-// added — via Guest Management, or by RSVPing on the public link. Free
-// templates are 2 coins/guest (5 if Premium Features are on). Hosts can pay
-// upfront for their expected link RSVPs; later RSVP guests use that prepaid
-// amount first, then the remaining balance, and blur if it runs out.
+// No guest tiers. Hosts pay for link RSVP capacity upfront: those slots are
+// revealed as guests arrive, while later RSVP guests blur until more capacity
+// is bought. Templates are 2 coins/guest, or 5 with Premium Features.
 // =====================================================================
 
 function getFlow2Rate(template, addonEnabled) {
@@ -2203,25 +2191,27 @@ function EditTemplateScreenFlow2({ template, addonEnabled, onToggleAddon, onCont
       </div>
 
       <div className="grid grid-cols-[1fr_420px] gap-8 px-8 py-6">
-        <div className="rounded-2xl flex flex-col items-center justify-center gap-3 p-10" style={{ background: C.bg }}>
-          <p className="text-xs uppercase font-semibold" style={{ color: C.muted }}>
-            {template.tag}
-          </p>
-          <p className="text-xl font-semibold text-center" style={{ color: C.text }}>
-            {template.name}
-          </p>
+        <div className="rounded-2xl flex items-center justify-center p-6" style={{ background: C.bg }}>
+          <img src={template.id === "premium" ? "/templates/paid.png" : "/templates/free.png"} alt={`${template.name} invitation preview`} className="max-h-[480px] rounded-xl object-contain shadow-sm" />
         </div>
 
         <div className="flex flex-col gap-6">
           <div
-            className="rounded-2xl p-5 flex items-center justify-between text-white"
+            className="rounded-2xl p-5 flex flex-col gap-3 text-white"
             style={{ background: "linear-gradient(120deg,#1c385a,#20596a)" }}
           >
-            <div>
-              <p className="text-xs uppercase font-semibold opacity-80">Per-guest rate</p>
-              <p className="text-3xl font-bold">{rate} coins</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase font-semibold opacity-80">Per-guest rate</p>
+                <p className="text-3xl font-bold">{rate} coins</p>
+              </div>
+              <Coin size={48} />
             </div>
-            <Coin size={48} />
+            <CoinBreakdown
+              rows={addonEnabled ? [{ label: "Base invite rate", amount: "2 coins" }, { label: "Premium Features", amount: "+3 coins" }, { label: "Per-guest rate", amount: "5 coins", total: true }] : [{ label: "Base invite rate", amount: "2 coins", total: true }]}
+              triggerLabel="What makes up this rate"
+              tone="onDark"
+            />
           </div>
 
           <div>
@@ -3003,7 +2993,8 @@ function DashboardScreenFlow2({
 
 // ---------- Flow 2 App shell ----------
 function PerInviteApp({ onBackToFlows }) {
-  const [screen, setScreen] = useState("template"); // template | editTemplate | confirm | live | guestManagement | dashboard
+  const [screen, setScreen] = useState("template"); // template | editTemplate | capacity | live | guestManagement | dashboard
+  const [capacityStep, setCapacityStep] = useState("publish");
   const [dashboardTab, setDashboardTab] = useState("guests");
   const [coins, setCoins] = useState(100);
   const [template, setTemplate] = useState(null);
@@ -3041,8 +3032,8 @@ function PerInviteApp({ onBackToFlows }) {
   const handleToggleAddon = () => setAddonEnabled((v) => !v);
 
   const handleFinishEditTemplate = () => {
-    if (template.cost > 0) setScreen("confirm");
-    else setScreen("live");
+    setCapacityStep("publish");
+    setScreen("capacity");
   };
 
   const handlePublish = () => {
@@ -3061,16 +3052,11 @@ function PerInviteApp({ onBackToFlows }) {
   const handleBulkAdd = (n) => setBulkGuests((b) => b + n);
   const handleBulkClear = () => setBulkGuests(0);
 
-  // ---- Public link RSVP: the estimated RSVPs are prepaid. Further RSVP guests
-  // charge the remaining balance one by one; once it cannot cover another guest,
-  // that guest remains in the list but is blurred until the host tops up. ----
+  // ---- Public link RSVP: capacity is paid for upfront. Once every paid slot
+  // is used, later RSVP guests stay hidden until the host buys more capacity. ----
   const tryChargeLinkGuest = (capacityOverride) => {
     const prepaidSlots = capacityOverride ?? guestCapacity;
-    const usesPrepaidSlot = linkGuests < prepaidSlots;
-    if (usesPrepaidSlot || coins >= rate) {
-      if (!usesPrepaidSlot) setCoins((c) => c - rate);
-      setLinkChargedCount((c) => c + 1);
-    }
+    if (linkGuests < prepaidSlots) setLinkChargedCount((c) => c + 1);
   };
 
   const handleAddLinkGuest = () => {
@@ -3124,7 +3110,33 @@ function PerInviteApp({ onBackToFlows }) {
     setScreen("dashboard");
   };
 
-  const handleCopyBlocked = () => setCapacityModal({ open: true, mode: "initial" });
+  const handleCopyBlocked = () => {
+    setCapacityStep("activate");
+    setScreen("capacity");
+  };
+
+  const quoteCapacity = (guests) => {
+    const capacityCost = guests * rate;
+    const includesTemplate = capacityStep === "publish" && template.cost > 0;
+    const lines = [
+      ...(includesTemplate ? [{ id: "template", label: "Premium template", amount: template.cost }] : []),
+      { id: "guests", label: "Guests", detail: `${guests} × ${rate} coins`, amount: capacityCost },
+    ];
+    return { rows: lines, total: lines.reduce((sum, line) => sum + line.amount, 0) };
+  };
+
+  const handlePayCapacity = (guests, bill) => {
+    if (coins < bill.total) return;
+    setCoins((c) => c - bill.total);
+    setGuestCapacity((current) => (capacityStep === "publish" ? guests : current + guests));
+    setScreen("live");
+  };
+
+  const handleSkipCapacity = () => {
+    if (coins < template.cost) return;
+    setCoins((c) => c - template.cost);
+    setScreen("live");
+  };
 
   const handleOpenUnlockModal = () => setCapacityModal({ open: true, mode: "unlock" });
 
@@ -3181,6 +3193,7 @@ function PerInviteApp({ onBackToFlows }) {
 
   const handleReset = () => {
     setScreen("template");
+    setCapacityStep("publish");
     setDashboardTab("guests");
     setCoins(100);
     setTemplate(null);
@@ -3234,6 +3247,20 @@ function PerInviteApp({ onBackToFlows }) {
           coins={coins}
           onPublish={handlePublish}
           onCancel={() => setScreen("editTemplate")}
+          onTopUp={handleOpenBuyCoins}
+        />
+      )}
+
+      {screen === "capacity" && template && (
+        <CapacityScreen
+          mode={capacityStep}
+          coins={coins}
+          skipAmount={capacityStep === "publish" ? template.cost : 0}
+          quote={quoteCapacity}
+          rateRows={addonEnabled ? [{ label: "Base invite rate", amount: "2 coins" }, { label: "Premium Features", amount: "+3 coins" }, { label: "Per-guest rate", amount: "5 coins", total: true }] : [{ label: "Base invite rate", amount: "2 coins", total: true }]}
+          onPay={handlePayCapacity}
+          onSkip={handleSkipCapacity}
+          onClose={() => setScreen(capacityStep === "publish" ? "editTemplate" : "live")}
           onTopUp={handleOpenBuyCoins}
         />
       )}

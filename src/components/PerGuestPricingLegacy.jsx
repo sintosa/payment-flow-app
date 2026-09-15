@@ -776,16 +776,7 @@ function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Bo
           const affordable = coins >= t.cost;
           return (
             <div key={t.id} className="bg-white rounded-2xl p-6 flex flex-col" style={{ border: `1px solid ${C.border}` }}>
-              <div
-                className="h-40 rounded-xl mb-4 flex items-center justify-center"
-                style={{
-                  background: t.id === "premium" ? "linear-gradient(135deg,#e2d9fe,#c1b6e1)" : C.tealLight,
-                }}
-              >
-                <p className="text-sm font-semibold" style={{ color: t.id === "premium" ? "#4a3292" : C.teal }}>
-                  {t.id === "premium" ? "✨ Premium layout preview" : "Simple layout preview"}
-                </p>
-              </div>
+              <img src={t.id === "premium" ? "/templates/paid.png" : "/templates/free.png"} alt={`${t.name} invitation preview`} className="h-56 w-full rounded-xl mb-4 object-cover object-top" />
               <p className="text-xs font-semibold uppercase mb-1" style={{ color: C.muted }}>
                 {t.tag}
               </p>
@@ -842,13 +833,8 @@ function EditTemplateScreen({ template, addonEnabled, onToggleAddon, onContinue,
 
       <div className="grid grid-cols-[1fr_420px] gap-8 px-8 py-6">
         {/* left preview */}
-        <div className="rounded-2xl flex flex-col items-center justify-center gap-3 p-10" style={{ background: C.bg }}>
-          <p className="text-xs uppercase font-semibold" style={{ color: C.muted }}>
-            {template.tag}
-          </p>
-          <p className="text-xl font-semibold text-center" style={{ color: C.text }}>
-            {template.name}
-          </p>
+        <div className="rounded-2xl flex items-center justify-center p-6" style={{ background: C.bg }}>
+          <img src={template.id === "premium" ? "/templates/paid.png" : "/templates/free.png"} alt={`${template.name} invitation preview`} className="max-h-[480px] rounded-xl object-contain shadow-sm" />
         </div>
 
         {/* right: edit panel */}
@@ -2084,7 +2070,7 @@ const BREAKDOWN_TONE = {
   onDark: { trigger: "rgba(255,255,255,0.85)", label: "rgba(255,255,255,0.85)", amount: "#ffffff", rule: "rgba(255,255,255,0.28)" },
 };
 
-function CoinBreakdown({ rows, triggerLabel = "Breakdown", tone = "light", align = "start" }) {
+export function CoinBreakdown({ rows, triggerLabel = "Breakdown", tone = "light", align = "start" }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const t = BREAKDOWN_TONE[tone] ?? BREAKDOWN_TONE.light;
@@ -2140,13 +2126,8 @@ function EditTemplateScreenFlow2({ policy, template, addonEnabled, onToggleAddon
       </div>
 
       <div className="grid grid-cols-[1fr_420px] gap-8 px-8 py-6">
-        <div className="rounded-2xl flex flex-col items-center justify-center gap-3 p-10" style={{ background: C.bg }}>
-          <p className="text-xs uppercase font-semibold" style={{ color: C.muted }}>
-            {template.tag}
-          </p>
-          <p className="text-xl font-semibold text-center" style={{ color: C.text }}>
-            {template.name}
-          </p>
+        <div className="rounded-2xl flex items-center justify-center p-6" style={{ background: C.bg }}>
+          <img src={template.id === "premium" ? "/templates/paid.png" : "/templates/free.png"} alt={`${template.name} invitation preview`} className="max-h-[480px] rounded-xl object-contain shadow-sm" />
         </div>
 
         <div className="flex flex-col gap-6">
@@ -2252,7 +2233,7 @@ function EditTemplateScreenFlow2({ policy, template, addonEnabled, onToggleAddon
 // total. Flow 3 sets both; Flow 2 quotes them equal and neither strikethrough appears. The
 // undiscounted figure is quoted, never re-summed here - a total added up in the view is a
 // second source for a number the host reads off the same screen as the charge.
-function CapacityScreen({
+export function CapacityScreen({
   mode,
   coins,
   skipAmount = 0,
