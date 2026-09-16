@@ -2693,17 +2693,12 @@ function DashboardScreenFlow2({
     </div>
   );
 
-  const hiddenReason =
-    hidden.length === 0
-      ? ""
-      : `your balance was too low when they RSVP'd`;
-
   const HiddenBanner = hidden.length > 0 && (
     <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl mb-4" style={{ background: "#ffebea" }}>
       <div className="flex items-center gap-2">
         <AlertTriangle size={16} color={C.red} />
         <p className="text-xs font-semibold" style={{ color: C.red }}>
-          {hidden.length} guest{hidden.length === 1 ? " is" : "s are"} hidden — {hiddenReason}. Unlock to reveal.
+          Guests are hidden. Unlock to reveal.
         </p>
       </div>
       <button onClick={onOpenUnlockModal} className="text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ background: C.navy }}>
@@ -2777,7 +2772,7 @@ function DashboardScreenFlow2({
             </p>
             {hidden.length > 0 && (
               <div className="mb-3">
-                <LockBlur locked label={`${hidden.length} guests hidden — unlock to reveal`} onUpgrade={onOpenUnlockModal}>
+                <LockBlur locked label="Guests are hidden — unlock to reveal" onUpgrade={onOpenUnlockModal}>
                   <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
                     {hidden.slice(0, 3).map((g) => (
                       <div key={g.id} className="grid grid-cols-3 items-center px-4 py-3 text-sm" style={{ borderTop: `1px solid ${C.border}` }}>
@@ -2845,7 +2840,7 @@ function DashboardScreenFlow2({
                 <div className="flex items-center gap-2">
                   <AlertTriangle size={16} color={C.red} />
                   <p className="text-xs font-semibold" style={{ color: C.red }}>
-                    {hidden.length} guest{hidden.length === 1 ? " is" : "s are"} hidden — {hiddenReason}. Unlock to see your full RSVP summary.
+                    Guests are hidden. Unlock to see your full RSVP summary.
                   </p>
                 </div>
                 <button onClick={onOpenUnlockModal} className="text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ background: C.navy }}>
