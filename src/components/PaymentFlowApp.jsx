@@ -104,13 +104,44 @@ const TIER_CARDS = [
 // The guest tiers (Free/Basic/Premium) are entirely separate from the template
 // you pick. A Premium template just grants Basic-tier benefits for free —
 // it does NOT grant the Premium tier itself.
-function getRequiredTier(guestCount) {
+function getRequiredTier(guestCount, tiers = TIER_CARDS) {
+  if (tiers !== TIER_CARDS) {
+    const caps = [25, 60, 100, 150, Infinity];
+    return tiers.find((tier) => guestCount <= caps[tier.level]) || tiers[tiers.length - 1];
+  }
   if (guestCount <= 50) return TIER_CARDS[0];
   if (guestCount <= 150) return TIER_CARDS[1];
   return TIER_CARDS[2];
 }
 
 const CAP_BY_LEVEL = [50, 150, Infinity];
+
+// Final Flow: all product prices are in coins. Dollar values only apply when
+// purchasing coin bundles, which receive a volume discount.
+const FINAL_COIN_PACKS = [
+  { coins: 50, price: "$10.00", perCoin: "$0.20 / coin" },
+  { coins: 100, price: "$19.00", perCoin: "$0.19 / coin" },
+  { coins: 200, price: "$34.00", perCoin: "$0.17 / coin", badge: "Best Value" },
+];
+const FINAL_TIER_CARDS = [
+  { level: 0, label: "FREE", cost: 0, range: "0–25 guests", benefit: "Invite your first 25 guests at no charge." },
+  { level: 1, label: "STARTER", cost: 25, range: "26–60 guests", benefit: "Pay 25 coins to unlock up to 60 guests." },
+  { level: 2, label: "GROWING", cost: 35, range: "61–100 guests", benefit: "Pay 35 coins to unlock up to 100 guests." },
+  { level: 3, label: "PREMIUM", cost: 50, range: "101–150 guests", benefit: "Pay 50 coins to unlock up to 150 guests." },
+  { level: 4, label: "CUSTOM", cost: null, range: "151+ guests", benefit: "Talk to us for a tailored high-volume event plan.", custom: true },
+];
+const FINAL_CAP_BY_LEVEL = [25, 60, 100, 150, Infinity];
+const FINAL_TEMPLATES = [
+  { id: "free", name: "Simple Get-Together", tag: "Free template", cost: 0, blurb: "A free template for a simple event. Guest capacity and Premium Features are chosen separately." },
+  { id: "premium", name: "Golden Hour Soiree", tag: "Premium template", cost: 50, regularCost: 75, blurb: "A premium invitation design, currently discounted from 75 coins to 50 coins." },
+  { id: "upload", name: "Upload your own design", tag: "Custom design", cost: 15, blurb: "Use your own invitation artwork for a nominal 15-coin upload charge." },
+];
+const FINAL_FLOW_CONFIG = {
+  label: "Flow 4 · Final Flow", startingCoins: 100, tiers: FINAL_TIER_CARDS,
+  caps: FINAL_CAP_BY_LEVEL, templates: FINAL_TEMPLATES, packs: FINAL_COIN_PACKS,
+  addonCost: 25, premiumTemplateGrantsTier: false, premiumTemplateIncludesFeatures: false,
+  subtitle: "Three simple levers: choose a template, add Premium Features if you need them, and pay for guest capacity as your event grows.",
+};
 
 // ---------- Derived guest data (used by the Guest List + RSVP Summary views) ----------
 function buildGuestList(selected, bulkGuests, linkGuests = 0) {
@@ -183,11 +214,14 @@ function LockBlur({ locked, label, onUpgrade, children }) {
   );
 }
 
-function TierPricingModal({ open, mode, targetLevel, coins, onPay, onClose, onTopUp }) {
+function TierPricingModal({ open, mode, targetLevel, paidLevel = 0, coins, onPay, onClose, onTopUp, tiers = TIER_CARDS, progressive = false }) {
+  const [selectedLevel, setSelectedLevel] = useState(targetLevel);
+  const [contactRequested, setContactRequested] = useState(false);
   if (!open) return null;
-  const target = TIER_CARDS[targetLevel];
-  const canPay = coins >= target.cost;
-  const shortfall = Math.max(0, target.cost - coins);
+  const target = tiers[selectedLevel];
+  const alreadyPaid = progressive ? (tiers[paidLevel]?.cost || 0) : 0;
+  const payNow = target.custom ? 0 : Math.max(0, target.cost - alreadyPaid);
+  const isIncluded = progressive && target.level < paidLevel;
   return (
     <div
       style={{ position: "fixed", inset: 0, background: "rgba(8,8,8,0.45)", zIndex: 50 }}
@@ -209,9 +243,7 @@ function TierPricingModal({ open, mode, targetLevel, coins, onPay, onClose, onTo
               </h2>
             )}
             <p className="text-sm" style={{ color: C.muted, maxWidth: 480 }}>
-              {mode === "exceeded"
-                ? `You're about to exceed your current limit. Upgrade to ${target.label} to add more guests and unlock all benefits.`
-                : "Choose the guest capacity that fits your event."}
+              {mode === "exceeded" ? "Choose the capacity tier that fits your event." : "Pick any tier to see exactly what your upgrade costs today."}
             </p>
           </div>
           <button onClick={onClose} aria-label="Close">
@@ -219,68 +251,77 @@ function TierPricingModal({ open, mode, targetLevel, coins, onPay, onClose, onTo
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          {TIER_CARDS.map((t) => {
-            const isTarget = t.level === targetLevel;
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-5">
+          {tiers.map((t) => {
+            const isTarget = t.level === selectedLevel;
             return (
-              <div
+              <button
                 key={t.level}
-                className="rounded-2xl p-4 flex flex-col items-center gap-3 text-center"
+                onClick={() => setSelectedLevel(t.level)}
+                className="rounded-2xl px-2 py-3 flex flex-col items-center gap-1.5 text-center transition-transform hover:-translate-y-0.5"
                 style={{
-                  border: `1px solid ${isTarget ? C.teal : C.border}`,
+                  border: `2px solid ${isTarget ? C.teal : "transparent"}`,
                   background: isTarget ? C.tealLight : "#f7f8fc",
+                  cursor: "pointer",
                 }}
               >
-                <div
-                  className="w-full py-2 rounded-md flex items-center justify-center gap-2"
-                  style={{ background: isTarget ? C.teal : C.tealLight }}
-                >
+                <div className="flex items-center justify-center gap-1" style={{ color: isTarget ? C.teal : C.muted }}>
                   <Coin size={20} />
-                  <span className="text-2xl font-semibold" style={{ color: isTarget ? "white" : C.teal }}>
-                    {t.cost}
+                  <span className="text-xl font-bold" style={{ color: isTarget ? C.teal : C.text }}>
+                    {t.custom ? "" : t.cost}
                   </span>
                 </div>
-                <div>
-                  <p className="text-xs uppercase tracking-wide" style={{ color: C.teal }}>
-                    {t.label}
-                  </p>
-                  <p className="text-base font-semibold" style={{ color: C.text }}>
-                    {t.range}
-                  </p>
-                </div>
-                <p className="text-sm" style={{ color: C.muted }}>
-                  {t.benefit}
-                </p>
-              </div>
+                <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: isTarget ? C.teal : C.muted }}>{t.label}</p>
+                <p className="text-xs font-semibold" style={{ color: C.text }}>{t.range}</p>
+              </button>
             );
           })}
         </div>
 
-        <div
-          className="rounded-2xl flex items-center justify-between p-4 mb-4"
-          style={{ background: "#f7f8fc", border: `1px solid ${C.border}` }}
-        >
-          <p className="text-xs uppercase font-semibold" style={{ color: C.muted }}>
-            Current balance
-          </p>
-          <div className="flex items-center gap-2">
-            <Coin size={26} />
-            <span className="text-2xl font-semibold" style={{ color: C.teal }}>
-              {coins}
-            </span>
+        <div className="rounded-2xl p-5 mb-4" style={{ background: "linear-gradient(120deg,#e8f3f5,#f7fbfc)", border: `1px solid ${C.teal}` }}>
+          {target.custom ? (
+            <div className="flex items-center justify-between gap-6">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.teal }}>Custom event pricing</p>
+                <p className="text-lg font-bold mt-1" style={{ color: C.text }}>151+ guests</p>
+                <p className="text-sm mt-2" style={{ color: C.muted }}>We&apos;ll tailor a guest-capacity plan around your event, audience, and features.</p>
+              </div>
+              <button onClick={() => setContactRequested(true)} className="shrink-0 px-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: C.navy }}>
+                {contactRequested ? "Request sent" : "Contact us"}
+              </button>
+            </div>
+          ) : (
+            <>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.teal }}>Selected: {target.label}</p>
+              <p className="text-lg font-bold mt-1" style={{ color: C.text }}>{target.range}</p>
+              <p className="text-xs mt-1" style={{ color: C.muted }}>{target.benefit}</p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Due now</p>
+              <div className="flex items-center justify-end gap-1 mt-1" style={{ color: C.teal }}><Coin size={22} /><span className="text-3xl font-bold">{payNow}</span></div>
+            </div>
           </div>
+          <div className="grid grid-cols-3 gap-3 mt-4 pt-4 text-xs" style={{ borderTop: `1px solid ${C.border}` }}>
+            <div><p style={{ color: C.muted }}>Already paid</p><p className="font-bold mt-1" style={{ color: C.text }}>{alreadyPaid} coins</p></div>
+            <div><p style={{ color: C.muted }}>Current balance</p><p className="font-bold mt-1" style={{ color: C.text }}>{coins} coins</p></div>
+            <div><p style={{ color: C.muted }}>After payment</p><p className="font-bold mt-1" style={{ color: C.text }}>{Math.max(0, coins - payNow)} coins</p></div>
+          </div>
+            </>
+          )}
         </div>
 
-        {!canPay && (
+        {coins < payNow && (
           <div
             className="rounded-xl px-4 py-3 mb-4 text-sm flex items-center justify-between gap-3"
             style={{ background: "#fdeceb", color: C.red }}
           >
             <span>
-              You're short {shortfall} coin{shortfall === 1 ? "" : "s"} for this tier.
+              You're short {Math.max(0, payNow - coins)} coin{payNow - coins === 1 ? "" : "s"} for this upgrade.
             </span>
             <button
-              onClick={() => onTopUp(shortfall)}
+              onClick={() => onTopUp(Math.max(0, payNow - coins))}
               className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold whitespace-nowrap"
               style={{ background: C.gold }}
             >
@@ -289,28 +330,27 @@ function TierPricingModal({ open, mode, targetLevel, coins, onPay, onClose, onTo
           </div>
         )}
 
-        <button
-          onClick={() => canPay && onPay(target)}
-          disabled={!canPay}
+        {!target.custom && <button
+          onClick={() => !isIncluded && coins >= payNow && onPay(target, payNow)}
+          disabled={isIncluded || coins < payNow}
           className="w-full h-12 rounded-2xl font-bold text-white flex items-center justify-center gap-2"
-          style={{ background: canPay ? C.teal : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
+          style={{ background: !isIncluded && coins >= payNow ? C.teal : "#9aa4ab", cursor: !isIncluded && coins >= payNow ? "pointer" : "not-allowed" }}
         >
-          {target.cost === 0 ? (
-            "Select"
+          {isIncluded ? "Already included" : payNow === 0 ? (
+            target.level === paidLevel ? "Current tier" : "Select tier"
           ) : (
             <>
-              <Coin size={20} /> Pay with {target.cost} Coins
+              <Coin size={20} /> Pay {payNow} Coins now
             </>
           )}
-        </button>
+        </button>}
       </div>
     </div>
   );
 }
 
-function AddonPromptModal({ open, coins, onAdd, onSkip, onTopUp }) {
+function AddonPromptModal({ open, coins, onAdd, onSkip, onTopUp, cost = 10 }) {
   if (!open) return null;
-  const cost = 10;
   const canPay = coins >= cost;
   const shortfall = Math.max(0, cost - coins);
   return (
@@ -372,9 +412,16 @@ function AddonPromptModal({ open, coins, onAdd, onSkip, onTopUp }) {
   );
 }
 
-function BuyCoinsScreen({ open, coins, packs, selectedPackIndex, onSelectPack, processing, onConfirm, onClose, simulateFailure, onToggleSimulateFailure }) {
+function BuyCoinsScreen({ open, coins, packs, selectedPackIndex, onSelectPack, processing, onConfirm, onClose, simulateFailure, onToggleSimulateFailure, couponEnabled = false }) {
+  const [coupon, setCoupon] = useState("");
+  const [couponState, setCouponState] = useState("idle");
   if (!open) return null;
   const pack = packs[selectedPackIndex];
+  const packPrice = Number(pack.price.replace(/[^0-9.]/g, ""));
+  const couponApplied = couponState === "applied";
+  const discount = couponApplied ? packPrice * 0.1 : 0;
+  const total = packPrice - discount;
+  const applyCoupon = () => setCouponState(coupon.trim().toUpperCase() === "COUPON" ? "applied" : "invalid");
   return (
     <div style={{ position: "fixed", inset: 0, background: "white", zIndex: 60, overflowY: "auto" }}>
       <div className="flex items-center justify-between px-8 h-14 border-b" style={{ borderColor: C.border }}>
@@ -452,17 +499,18 @@ function BuyCoinsScreen({ open, coins, packs, selectedPackIndex, onSelectPack, p
             );
           })}
 
-          <label
-            className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl"
-            style={{ background: "#fdf0ff", border: "1px dashed #b34fd6" }}
-          >
+          {couponEnabled && (
+            <div className="flex items-center gap-4 px-4 py-3 rounded-xl" style={{ background: "#fdf0ff", border: "1px dashed #b34fd6" }}>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#8a2ba8" }}>Test coupon codes</p>
+                <p className="text-xs" style={{ color: "#5c1c73" }}>Try COUPON for 10% off, or WRONG-COUPON to preview an invalid-code error.</p>
+              </div>
+            </div>
+          )}
+          <label className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl" style={{ background: "#fdf0ff", border: "1px dashed #b34fd6" }}>
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#8a2ba8" }}>
-                Test edge case
-              </p>
-              <p className="text-xs" style={{ color: "#5c1c73" }}>
-                Simulate a declined card to preview the payment-failed screen.
-              </p>
+              <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#8a2ba8" }}>Test payment failure</p>
+              <p className="text-xs" style={{ color: "#5c1c73" }}>Simulate a declined card to preview the payment-failed screen.</p>
             </div>
             <input type="checkbox" checked={simulateFailure} onChange={onToggleSimulateFailure} className="shrink-0" />
           </label>
@@ -479,22 +527,39 @@ function BuyCoinsScreen({ open, coins, packs, selectedPackIndex, onSelectPack, p
                 {pack.coins} Elie Coins
               </span>
             </div>
-            <span className="text-lg font-bold" style={{ color: C.text }}>
+            <span className={`text-lg font-bold ${couponApplied ? "line-through" : ""}`} style={{ color: couponApplied ? C.muted : C.text }}>
               {pack.price}
             </span>
           </div>
-          <div style={{ borderTop: `1px solid ${C.border}` }} />
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <CreditCard size={18} />
-              <span className="text-sm font-semibold" style={{ color: C.text }}>
-                Secure Checkout
-              </span>
+          {couponEnabled && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold" style={{ color: C.text }}>Coupon code</p>
+              <div className="flex gap-2">
+                <input
+                  value={coupon}
+                  onChange={(event) => { setCoupon(event.target.value); setCouponState("idle"); }}
+                  onKeyDown={(event) => event.key === "Enter" && applyCoupon()}
+                  placeholder="Enter code"
+                  className="min-w-0 flex-1 h-10 px-3 rounded-lg text-sm uppercase"
+                  style={{ border: `1px solid ${couponState === "invalid" ? C.red : C.border}` }}
+                />
+                <button onClick={applyCoupon} className="px-3 rounded-lg text-xs font-bold text-white" style={{ background: C.navy }}>Apply</button>
+              </div>
+              {couponState === "applied" && <p className="text-xs font-semibold" style={{ color: C.green }}>COUPON applied — 10% discount added.</p>}
+              {couponState === "invalid" && <p className="text-xs font-semibold" style={{ color: C.red }}>That coupon code isn&apos;t valid. Try again.</p>}
             </div>
-            <p className="text-xs" style={{ color: C.text }}>
-              We never see your card details. Transactions are fully encrypted and securely processed.
-            </p>
-          </div>
+          )}
+          {couponApplied && (
+            <div className="flex items-center justify-between text-sm" style={{ color: C.green }}>
+              <span>10% coupon discount</span><span>-${discount.toFixed(2)}</span>
+            </div>
+          )}
+          {couponEnabled && (
+            <div className="flex items-center justify-between text-base font-bold" style={{ color: C.text }}>
+              <span>Total</span><span>${total.toFixed(2)}</span>
+            </div>
+          )}
+          <div style={{ borderTop: `1px solid ${C.border}` }} />
           {processing && (
             <p className="text-sm text-center" style={{ color: "#4b5563" }}>
               Confirming payment…
@@ -514,8 +579,8 @@ function BuyCoinsScreen({ open, coins, packs, selectedPackIndex, onSelectPack, p
               </>
             )}
           </button>
-          <p className="text-xs text-center w-full" style={{ color: C.muted }}>
-            We use Stripe for our transactions.
+          <p className="text-xs text-center w-full px-4 py-2 rounded-lg" style={{ color: C.muted, background: C.bg }}>
+            We use Stripe for secure checkout. Your payment details are encrypted and never stored by us.
           </p>
         </div>
       </div>
@@ -669,8 +734,41 @@ function PaymentFailedScreen({ open, pack, onTryAgain, onChoosePack }) {
   );
 }
 
+function CoinPaymentHistory({ onBack }) {
+  const entries = [
+    { title: "Welcome credit", detail: "Today · Promotional credit", amount: "+50", type: "credit" },
+    { title: "100 Coin Pack", detail: "Today · Coin purchase", amount: "+100", type: "credit" },
+    { title: "Premium template", detail: "Yesterday · Invitation design", amount: "−50", type: "debit" },
+    { title: "Starter guest capacity", detail: "Yesterday · Guest capacity", amount: "−25", type: "debit" },
+    { title: "Premium Features", detail: "Sep 14, 2026 · Event add-on", amount: "−25", type: "debit" },
+  ];
+  return (
+    <div style={{ position: "fixed", inset: 0, background: C.bg, zIndex: 61, overflowY: "auto" }}>
+      <div className="max-w-3xl mx-auto px-6 py-10">
+        <button onClick={onBack} className="flex items-center gap-2 text-sm font-semibold mb-8" style={{ color: C.text }}><ArrowLeft size={18} /> Profile / Coin Payment History</button>
+        <div className="bg-white rounded-3xl p-8 shadow-sm" style={{ border: `1px solid ${C.border}` }}>
+          <div className="flex items-center justify-between pb-6 mb-4" style={{ borderBottom: `1px solid ${C.border}` }}>
+            <div><h2 className="text-2xl font-bold" style={{ color: C.text }}>Coin Payment History</h2><p className="text-sm mt-1" style={{ color: C.muted }}>A record of coins added to and spent from your wallet.</p></div>
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-full" style={{ background: C.bg, color: C.muted }}>All activity</span>
+          </div>
+          <div>
+            {entries.map((entry, index) => (
+              <div key={`${entry.title}-${index}`} className="flex items-center justify-between gap-4 py-5" style={{ borderBottom: index < entries.length - 1 ? `1px solid ${C.border}` : "none" }}>
+                <div><p className="font-semibold" style={{ color: C.text }}>{entry.title}</p><p className="text-sm mt-1" style={{ color: C.muted }}>{entry.detail}</p></div>
+                <span className="shrink-0 px-3 py-2 rounded-xl text-sm font-bold" style={{ color: entry.type === "credit" ? "#059669" : C.red, background: entry.type === "credit" ? "#e5f9f2" : "#fff0ef" }}>{entry.amount} coins</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProfileScreen({ open, coins, guestCount, onClose, onOpenBuyCoins }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
   if (!open) return null;
+  if (historyOpen) return <CoinPaymentHistory onBack={() => setHistoryOpen(false)} />;
   return (
     <div style={{ position: "fixed", inset: 0, background: C.bg, zIndex: 60, overflowY: "auto" }}>
       <div className="flex items-center px-8 h-14 border-b bg-white" style={{ borderColor: C.border }}>
@@ -743,6 +841,14 @@ function ProfileScreen({ open, coins, guestCount, onClose, onOpenBuyCoins }) {
               <Coin size={16} />
               <span className="text-sm font-semibold text-white">{coins} Coins</span>
             </div>
+          </button>
+          <button
+            onClick={() => setHistoryOpen(true)}
+            className="bg-white rounded-2xl flex items-center justify-between pl-6 pr-5 py-4 w-full text-left"
+            style={{ border: `1px solid ${C.border}` }}
+          >
+            <div className="flex items-center gap-2"><ListChecks size={20} /><span className="text-sm font-semibold" style={{ color: C.text }}>Coin Payment History</span></div>
+            <span style={{ color: C.muted }}>›</span>
           </button>
         </div>
 
@@ -836,25 +942,37 @@ function TopBar({ coins, onAddCoins, onReset, onOpenProfile, onBackToFlows, flow
 }
 
 // ---------- Screen 1: Template gallery ----------
-function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Both templates use the same guest-tier pricing — the premium template just covers more of it upfront." }) {
+function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Both templates use the same guest-tier pricing — the premium template just covers more of it upfront.", roomy = false }) {
   return (
-    <div className="max-w-4xl mx-auto px-6 py-10">
+    <div className={`${roomy ? "max-w-6xl" : "max-w-4xl"} mx-auto px-6 py-10`}>
       <h1 className="text-2xl font-semibold mb-1" style={{ color: C.text }}>
         Choose a template
       </h1>
       <p className="text-sm mb-8" style={{ color: C.muted }}>
         {subtitle}
       </p>
-      <div className="grid grid-cols-2 gap-6">
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${roomy ? "xl:grid-cols-3" : "lg:grid-cols-3"} gap-6`}>
         {templates.map((t) => {
           const affordable = coins >= t.cost;
           return (
             <div key={t.id} className="bg-white rounded-2xl p-6 flex flex-col" style={{ border: `1px solid ${C.border}` }}>
-              <img
-                src={t.id === "premium" ? "/templates/paid.png" : "/templates/free.png"}
-                alt={`${t.name} invitation preview`}
-                className="h-[420px] w-full rounded-xl mb-4 object-contain"
-              />
+              {t.id === "upload" ? (
+                <div
+                  className="h-[420px] w-full rounded-xl mb-4 flex flex-col items-center justify-center gap-4"
+                  style={{ background: "#f7f8fc", border: `2px dashed ${C.border}` }}
+                >
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: C.tealLight, color: C.teal }}>
+                    <PlusCircle size={34} strokeWidth={2.5} />
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: C.text }}>Add your invitation design</p>
+                </div>
+              ) : (
+                <img
+                  src={t.id === "premium" ? "/templates/paid.png" : "/templates/free.png"}
+                  alt={`${t.name} invitation preview`}
+                  className="h-[420px] w-full rounded-xl mb-4 object-contain"
+                />
+              )}
               <p className="text-xs font-semibold uppercase mb-1" style={{ color: C.muted }}>
                 {t.tag}
               </p>
@@ -867,6 +985,7 @@ function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Bo
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1">
                   <Coin size={20} />
+                  {t.regularCost && <span className="text-xs line-through mr-1" style={{ color: C.muted }}>{t.regularCost}</span>}
                   <span className="font-semibold" style={{ color: C.teal }}>
                     {t.cost === 0 ? "Free" : `${t.cost} Coins`}
                   </span>
@@ -894,7 +1013,7 @@ function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Bo
 }
 
 // ---------- Screen 2: Edit Template (premium features are offered here) ----------
-function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, onContinue, onBack }) {
+function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, onContinue, onBack, premiumTemplateIncludesFeatures = true }) {
   return (
     <div>
       <div className="flex items-center justify-between px-8 py-3 border-b" style={{ borderColor: C.border }}>
@@ -912,7 +1031,22 @@ function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, on
       <div className="grid grid-cols-[1fr_420px] gap-8 px-8 py-6">
         {/* left preview */}
         <div className="rounded-2xl flex items-center justify-center p-6" style={{ background: C.bg }}>
-          <img src={template.id === "premium" ? "/templates/paid.png" : "/templates/free.png"} alt={`${template.name} invitation preview`} className="max-h-[480px] rounded-xl object-contain shadow-sm" />
+          {template.id === "upload" ? (
+            <div
+              className="w-full max-w-[430px] min-h-[480px] rounded-xl flex flex-col items-center justify-center gap-4"
+              style={{ background: "white", border: `2px dashed ${C.border}` }}
+            >
+              <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: C.tealLight, color: C.teal }}>
+                <PlusCircle size={42} strokeWidth={2.25} />
+              </div>
+              <div className="text-center">
+                <p className="font-semibold" style={{ color: C.text }}>Upload your invitation</p>
+                <p className="text-sm mt-1" style={{ color: C.muted }}>Your design will appear here.</p>
+              </div>
+            </div>
+          ) : (
+            <img src={template.id === "premium" ? "/templates/paid.png" : "/templates/free.png"} alt={`${template.name} invitation preview`} className="max-h-[480px] rounded-xl object-contain shadow-sm" />
+          )}
         </div>
 
         {/* right: edit panel */}
@@ -946,7 +1080,7 @@ function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, on
             <p className="font-semibold mb-3" style={{ color: C.text }}>
               Add-ons
             </p>
-            {template.id === "premium" ? (
+            {template.id === "premium" && premiumTemplateIncludesFeatures ? (
               <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: "#e2d9fe", border: "1px solid #4a3292" }}>
                 <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: "#4a3292" }}>
                   <Check size={14} color="white" />
@@ -1015,8 +1149,9 @@ function GuestManagementScreen({
   onUpgrade,
   onSendInvite,
   onBack,
+  caps = CAP_BY_LEVEL,
 }) {
-  const atCap = guestCount > CAP_BY_LEVEL[paidLevel] && paidLevel < 2;
+  const atCap = guestCount > caps[paidLevel] && paidLevel < caps.length - 1;
   return (
     <div>
       <div className="flex items-center justify-between px-8 py-3 border-b" style={{ borderColor: C.border }}>
@@ -1104,8 +1239,8 @@ const STATUS_STYLE = {
 };
 
 // ---------- Guest List (read-only, in the dashboard — shows who's actually RSVP'd) ----------
-function GuestListPanel({ guestList, paidLevel, onInviteMore, onUpgrade, linkGuests, onAddLinkGuest }) {
-  const cap = CAP_BY_LEVEL[paidLevel];
+function GuestListPanel({ guestList, paidLevel, onInviteMore, onUpgrade, linkGuests, onAddLinkGuest, caps = CAP_BY_LEVEL }) {
+  const cap = caps[paidLevel];
   const visible = guestList.slice(0, cap);
   const hidden = guestList.slice(cap);
 
@@ -1221,13 +1356,12 @@ function getPublishCost(template) {
   return template.cost;
 }
 
-function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPublish, onCancel, onTopUp }) {
+function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPublish, onCancel, onTopUp, caps = [50, 150, 250], premiumTemplateIncludesFeatures = true, emphasizeSpend = false, publishButtonLabel = "Yes, Pay & Publish" }) {
   const cost = getPublishCost(template);
   const canPay = coins >= cost;
   const shortfall = Math.max(0, cost - coins);
-  const capByLevel = [50, 150, 250];
-  const guestCap = capByLevel[paidLevel];
-  const hasPremiumFeatures = addonPurchased || template.id === "premium";
+  const guestCap = caps[paidLevel];
+  const hasPremiumFeatures = addonPurchased || (premiumTemplateIncludesFeatures && template.id === "premium");
 
   return (
     <div className="min-h-[calc(100vh-56px)] flex items-center justify-center p-6">
@@ -1243,34 +1377,45 @@ function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPu
           <h2 className="text-2xl font-bold text-center" style={{ color: C.text }}>
             Your invite is ready to publish
           </h2>
+          {emphasizeSpend && cost > 0 && (
+            <div className="w-full rounded-2xl px-5 py-4 flex items-center justify-between" style={{ background: "#fff4d8", border: "1px solid #edc55d" }}>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: "#8a6200" }}>Due today</p>
+                <p className="text-sm mt-1" style={{ color: "#765b21" }}>One-time payment to publish this invite</p>
+              </div>
+              <div className="flex items-center gap-2" style={{ color: "#8a6200" }}>
+                <Coin size={30} />
+                <span className="text-4xl font-bold">{cost}</span>
+              </div>
+            </div>
+          )}
           <div
             className="w-full rounded-2xl p-4 flex flex-col gap-3"
             style={{ background: "#f2f2f2", border: `1px solid ${C.navy}` }}
           >
-            <HighlightRow
-              title={cost > 0 ? `Costs ${cost} coins` : "Free to publish"}
-              subtitle={cost > 0 ? "One-time payment to publish your invite." : "No charges yet — guest tiers are billed as you add people."}
-            />
-            <div style={{ borderTop: `1px solid ${C.border}` }} />
-            <HighlightRow
-              title={`Add up to ${guestCap} guests for free`}
-              subtitle="You'll add guests after publishing — bigger guest lists unlock further tiers."
-            />
-            <div style={{ borderTop: `1px solid ${C.border}` }} />
-            <HighlightRow
-              title={hasPremiumFeatures ? "Premium Features included" : "Basic features included"}
-              subtitle={
-                hasPremiumFeatures
-                  ? "Polls, Surveys & Broadcast are ready to use."
-                  : "You can add Premium Features anytime from your dashboard."
-              }
-            />
+            {emphasizeSpend ? (
+              <>
+                <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Cost breakdown</p>
+                <div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>{template.tag}</span><span className="font-bold" style={{ color: C.text }}>{cost} coins</span></div>
+                <div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>First {guestCap} guests</span><span className="font-semibold" style={{ color: C.green }}>Free</span></div>
+                <div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>{hasPremiumFeatures ? "Premium Features" : "Basic features"}</span><span className="font-semibold" style={{ color: C.green }}>Included</span></div>
+                <div className="flex items-center justify-between pt-3 mt-1" style={{ borderTop: `1px solid ${C.border}` }}><span className="font-bold" style={{ color: C.text }}>Total due now</span><span className="text-xl font-bold flex items-center gap-1" style={{ color: C.teal }}><Coin size={18} />{cost}</span></div>
+              </>
+            ) : (
+              <>
+                <HighlightRow title={cost > 0 ? `Costs ${cost} coins` : "Free to publish"} subtitle={cost > 0 ? "One-time payment to publish your invite." : "No charges yet — guest tiers are billed as you add people."} />
+                <div style={{ borderTop: `1px solid ${C.border}` }} />
+                <HighlightRow title={`Add up to ${guestCap} guests for free`} subtitle="You'll add guests after publishing — bigger guest lists unlock further tiers." />
+                <div style={{ borderTop: `1px solid ${C.border}` }} />
+                <HighlightRow title={hasPremiumFeatures ? "Premium Features included" : "Basic features included"} subtitle={hasPremiumFeatures ? "Polls, Surveys & Broadcast are ready to use." : "You can add Premium Features anytime from your dashboard."} />
+              </>
+            )}
           </div>
         </div>
 
         <div
           className="w-full rounded-2xl p-4 flex items-center justify-between text-white"
-          style={{ background: "#452C90", display: cost > 0 ? "flex" : "none" }}
+          style={{ background: "#452C90", display: cost > 0 && !emphasizeSpend ? "flex" : "none" }}
         >
           <div>
             <p className="text-xs opacity-80">Your Balance</p>
@@ -1281,6 +1426,13 @@ function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPu
           </div>
           <Coin size={40} />
         </div>
+
+        {emphasizeSpend && cost > 0 && (
+          <div className="w-full flex items-center justify-between px-1 text-sm" style={{ color: C.muted }}>
+            <span>Current balance: <strong style={{ color: C.text }}>{coins} coins</strong></span>
+            <span>After payment: <strong style={{ color: C.text }}>{Math.max(0, coins - cost)} coins</strong></span>
+          </div>
+        )}
 
         {cost > 0 && !canPay && (
           <div
@@ -1307,7 +1459,7 @@ function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPu
             className="w-full h-12 rounded-xl font-semibold text-white"
             style={{ background: canPay ? C.navy : "#9aa4ab", cursor: canPay ? "pointer" : "not-allowed" }}
           >
-            {cost > 0 ? "Yes, Pay & Publish" : "Yes, Publish"}
+            {cost > 0 ? publishButtonLabel : "Yes, Publish"}
           </button>
           <button onClick={onCancel} className="text-sm font-semibold" style={{ color: C.text }}>
             Cancel
@@ -1467,10 +1619,14 @@ function DashboardScreen({
   linkGuests,
   onAddLinkGuest,
   onBack,
+  tiers = TIER_CARDS,
+  caps = CAP_BY_LEVEL,
+  addonCost = 10,
+  premiumTemplateIncludesFeatures = true,
 }) {
   const [tab, setTab] = useState(initialTab || "guests");
-  const tierName = TIER_CARDS[tierLevel].label;
-  const isMaxed = tierLevel === 2;
+  const tierName = tiers[tierLevel].label;
+  const isMaxed = tierLevel >= tiers.length - 2;
 
   const tabs = [
     { id: "rsvp", label: "RSVP Summary", icon: ListChecks },
@@ -1485,22 +1641,25 @@ function DashboardScreen({
           <ArrowLeft size={16} /> Back
         </button>
         <div className="flex items-center gap-3">
-          <span
-            className="text-xs font-semibold px-3 py-1 rounded-full"
+          <button
+            onClick={() => onUpgrade(tierLevel)}
+            className="text-xs font-semibold px-3 py-1 rounded-full transition-transform hover:scale-105"
             style={{
-              background: tierLevel === 2 ? "#e2d9fe" : tierLevel === 1 ? C.tealLight : C.bg,
-              color: tierLevel === 2 ? "#4a3292" : tierLevel === 1 ? C.teal : C.muted,
+              background: tierLevel >= 2 ? "#e2d9fe" : tierLevel === 1 ? C.tealLight : C.bg,
+              color: tierLevel >= 2 ? "#4a3292" : tierLevel === 1 ? C.teal : C.muted,
+              cursor: "pointer",
             }}
+            title="View all guest capacity tiers"
           >
             {tierName} Tier
-          </span>
+          </button>
           <div className="flex items-center gap-2 text-xs" style={{ color: C.muted }}>
             <Coin size={16} /> {coins} coins available
           </div>
         </div>
       </div>
 
-      {template.id === "premium" && tierLevel === 1 && (
+      {premiumTemplateIncludesFeatures && template.id === "premium" && tierLevel === 1 && (
         <p className="text-xs mb-2" style={{ color: C.muted }}>
           Basic tier is included free with your Premium template.
         </p>
@@ -1544,6 +1703,7 @@ function DashboardScreen({
           onUpgrade={onUpgrade}
           linkGuests={linkGuests}
           onAddLinkGuest={onAddLinkGuest}
+          caps={caps}
         />
       )}
 
@@ -1557,8 +1717,8 @@ function DashboardScreen({
         const overview = computeOverview(guestList.length);
         const meal = computeMealPrefs(guestList.length);
         const drink = computeDrinkPrefs(guestList.length);
-        const locked = guestList.length > CAP_BY_LEVEL[tierLevel];
-        const nextLevel = Math.min(tierLevel + 1, 2);
+        const locked = guestList.length > caps[tierLevel];
+        const nextLevel = Math.min(tierLevel + 1, tiers.length - 1);
 
         if (guestList.length === 0) {
           return (
@@ -1604,7 +1764,7 @@ function DashboardScreen({
             )}
 
             <div className="grid grid-cols-2 gap-4">
-              <LockBlur locked={locked} label={`You have ${guestList.length} guests — upgrade to ${TIER_CARDS[nextLevel].label} to unlock.`} onUpgrade={() => onUpgrade(nextLevel)}>
+              <LockBlur locked={locked} label={`You have ${guestList.length} guests — upgrade to ${tiers[nextLevel].label} to unlock.`} onUpgrade={() => onUpgrade(nextLevel)}>
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     RSVP Breakdown
@@ -1624,7 +1784,7 @@ function DashboardScreen({
                 </div>
               </LockBlur>
 
-              <LockBlur locked={locked} label={`You have ${guestList.length} guests — upgrade to ${TIER_CARDS[nextLevel].label} to unlock.`} onUpgrade={() => onUpgrade(nextLevel)}>
+              <LockBlur locked={locked} label={`You have ${guestList.length} guests — upgrade to ${tiers[nextLevel].label} to unlock.`} onUpgrade={() => onUpgrade(nextLevel)}>
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     Guest Overview
@@ -1644,7 +1804,7 @@ function DashboardScreen({
                 </div>
               </LockBlur>
 
-              <LockBlur locked={locked} label={`You have ${guestList.length} guests — upgrade to ${TIER_CARDS[nextLevel].label} to unlock.`} onUpgrade={() => onUpgrade(nextLevel)}>
+              <LockBlur locked={locked} label={`You have ${guestList.length} guests — upgrade to ${tiers[nextLevel].label} to unlock.`} onUpgrade={() => onUpgrade(nextLevel)}>
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     Meal Preferences
@@ -1665,7 +1825,7 @@ function DashboardScreen({
                 </div>
               </LockBlur>
 
-              <LockBlur locked={locked} label={`You have ${guestList.length} guests — upgrade to ${TIER_CARDS[nextLevel].label} to unlock.`} onUpgrade={() => onUpgrade(nextLevel)}>
+              <LockBlur locked={locked} label={`You have ${guestList.length} guests — upgrade to ${tiers[nextLevel].label} to unlock.`} onUpgrade={() => onUpgrade(nextLevel)}>
                 <div className="rounded-2xl p-5" style={{ background: C.bg }}>
                   <p className="text-sm font-semibold mb-3" style={{ color: C.text }}>
                     Drink Preferences
@@ -1709,9 +1869,9 @@ function DashboardScreen({
       })()}
 
       {tab === "broadcast" &&
-        (addonPurchased || addonIncluded || template.id === "premium" ? (
+        (addonPurchased || addonIncluded || (premiumTemplateIncludesFeatures && template.id === "premium") ? (
           <div className="rounded-2xl p-6" style={{ background: C.bg }}>
-            {!addonPurchased && (addonIncluded || template.id === "premium") && (
+            {!addonPurchased && (addonIncluded || (premiumTemplateIncludesFeatures && template.id === "premium")) && (
               <p className="text-xs font-semibold mb-3" style={{ color: C.teal }}>
                 {template.id === "premium" ? "Included free with your Premium template." : "Included free with your Premium tier."}
               </p>
@@ -1740,7 +1900,7 @@ function DashboardScreen({
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold"
               style={{ background: C.navy }}
             >
-              <Coin size={16} /> Unlock for 10 Coins
+              <Coin size={16} /> Unlock for {addonCost} Coins
             </button>
           </div>
         ))}
@@ -1749,10 +1909,16 @@ function DashboardScreen({
 }
 
 // ---------- App ----------
-function TierBasedApp({ onBackToFlows }) {
+function TierBasedApp({ onBackToFlows, config = null }) {
+  const tiers = config?.tiers || TIER_CARDS;
+  const caps = config?.caps || CAP_BY_LEVEL;
+  const templates = config?.templates || TEMPLATES;
+  const packs = config?.packs || COIN_PACKS;
+  const addonCost = config?.addonCost || 10;
+  const startingCoins = config?.startingCoins || 100;
   const [screen, setScreen] = useState("template"); // template | editTemplate | confirm | live | dashboard | guestManagement
   const [dashboardTab, setDashboardTab] = useState("guests");
-  const [coins, setCoins] = useState(100);
+  const [coins, setCoins] = useState(startingCoins);
   const [template, setTemplate] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [bulkGuests, setBulkGuests] = useState(0);
@@ -1770,8 +1936,8 @@ function TierBasedApp({ onBackToFlows }) {
   const guestList = useMemo(() => buildGuestList(selected, bulkGuests, linkGuests), [selected, bulkGuests, linkGuests]);
 
   const attempt = (newCount, mode, applyFn) => {
-    const required = getRequiredTier(newCount);
-    if (required.cost > 0 && required.level > paidLevel) {
+    const required = getRequiredTier(newCount, tiers);
+    if (required.level > paidLevel && (required.cost > 0 || required.custom)) {
       setModal({ open: true, mode, targetLevel: required.level, pending: applyFn });
       return;
     }
@@ -1799,8 +1965,8 @@ function TierBasedApp({ onBackToFlows }) {
   // at which point the host's dashboard (not the guest) is the one that gets blurred/locked.
   const handleAddLinkGuest = () => setLinkGuests((n) => n + 1);
 
-  const handlePay = (target) => {
-    setCoins((c) => c - target.cost);
+  const handlePay = (target, amount = target.cost) => {
+    setCoins((c) => c - amount);
     setPaidLevel(target.level);
     modal.pending && modal.pending();
     setModal({ open: false, mode: "select", targetLevel: 0, pending: null });
@@ -1811,7 +1977,7 @@ function TierBasedApp({ onBackToFlows }) {
   const handleSelectTemplate = (t) => {
     // Template cost is settled at Pay & Publish, not here — see ConfirmPublishScreen.
     setTemplate(t);
-    if (t.id === "premium") {
+    if (t.id === "premium" && config?.premiumTemplateGrantsTier !== false) {
       // Premium template grants Basic-tier benefits free (not Premium tier).
       setPaidLevel(1);
     } else {
@@ -1838,11 +2004,11 @@ function TierBasedApp({ onBackToFlows }) {
     }
   };
 
-  const featuresUnlocked = paidLevel >= 1; // Basic dashboard features (RSVP breakdown, guest overview, etc.)
-  const addonIncluded = paidLevel === 2; // Premium tier bundles Premium Features free
+  const featuresUnlocked = config ? addonPurchased : paidLevel >= 1;
+  const addonIncluded = config ? false : paidLevel === 2;
 
   const handleUpgradeFromDashboard = (forceLevel) => {
-    const targetLevel = typeof forceLevel === "number" ? forceLevel : Math.min(paidLevel + 1, 2);
+    const targetLevel = typeof forceLevel === "number" ? forceLevel : Math.min(paidLevel + 1, tiers.length - 1);
     setModal({ open: true, mode: "select", targetLevel, pending: () => {} });
   };
 
@@ -1862,7 +2028,7 @@ function TierBasedApp({ onBackToFlows }) {
   const handleReset = () => {
     setScreen("template");
     setDashboardTab("guests");
-    setCoins(100);
+    setCoins(startingCoins);
     setTemplate(null);
     setSelected(new Set());
     setBulkGuests(0);
@@ -1878,7 +2044,7 @@ function TierBasedApp({ onBackToFlows }) {
 
   const handleOpenBuyCoins = (shortfall) => {
     // Preselect the smallest pack that covers the shortfall, defaulting to the middle pack.
-    const idx = COIN_PACKS.findIndex((p) => p.coins >= (shortfall || 0));
+    const idx = packs.findIndex((p) => p.coins >= (shortfall || 0));
     setBuyCoins({ open: true, selectedPackIndex: idx >= 0 ? idx : 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
   };
 
@@ -1888,7 +2054,7 @@ function TierBasedApp({ onBackToFlows }) {
 
   const handleConfirmBuyCoins = () => {
     const { selectedPackIndex, simulateFailure } = buyCoins;
-    const credited = COIN_PACKS[selectedPackIndex].coins;
+    const credited = packs[selectedPackIndex].coins;
     const prior = coins;
     setBuyCoins((b) => ({ ...b, processing: true }));
     setTimeout(() => {
@@ -1922,9 +2088,10 @@ function TierBasedApp({ onBackToFlows }) {
         onReset={handleReset}
         onOpenProfile={() => setProfileOpen(true)}
         onBackToFlows={onBackToFlows}
+        flowLabel={config?.label}
       />
 
-      {screen === "template" && <TemplateScreen coins={coins} onSelect={handleSelectTemplate} />}
+      {screen === "template" && <TemplateScreen coins={coins} onSelect={handleSelectTemplate} templates={templates} subtitle={config?.subtitle} roomy={Boolean(config)} />}
 
       {screen === "editTemplate" && template && (
         <EditTemplateScreen
@@ -1933,6 +2100,9 @@ function TierBasedApp({ onBackToFlows }) {
           onAddPremiumFeatures={handleAddPremiumFeaturesClick}
           onContinue={handleFinishEditTemplate}
           onBack={() => setScreen("template")}
+          premiumTemplateIncludesFeatures={config?.premiumTemplateIncludesFeatures !== false}
+          emphasizeSpend={Boolean(config)}
+          publishButtonLabel={config ? "Yes, Publish" : "Yes, Pay & Publish"}
         />
       )}
 
@@ -1945,6 +2115,8 @@ function TierBasedApp({ onBackToFlows }) {
           onPublish={handlePublish}
           onCancel={() => setScreen("editTemplate")}
           onTopUp={handleOpenBuyCoins}
+          caps={config ? caps : [50, 150, 250]}
+          premiumTemplateIncludesFeatures={config?.premiumTemplateIncludesFeatures !== false}
         />
       )}
 
@@ -1974,6 +2146,7 @@ function TierBasedApp({ onBackToFlows }) {
             setScreen("dashboard");
           }}
           onBack={() => setScreen("dashboard")}
+          caps={caps}
         />
       )}
 
@@ -1994,17 +2167,25 @@ function TierBasedApp({ onBackToFlows }) {
           linkGuests={linkGuests}
           onAddLinkGuest={handleAddLinkGuest}
           onBack={() => setScreen("live")}
+          tiers={tiers}
+          caps={caps}
+          addonCost={addonCost}
+          premiumTemplateIncludesFeatures={config?.premiumTemplateIncludesFeatures !== false}
         />
       )}
 
       <TierPricingModal
+        key={`${modal.open}-${modal.targetLevel}-${paidLevel}`}
         open={modal.open}
         mode={modal.mode}
         targetLevel={modal.targetLevel}
+        paidLevel={paidLevel}
         coins={coins}
         onPay={handlePay}
         onClose={handleModalClose}
         onTopUp={handleOpenBuyCoins}
+        tiers={tiers}
+        progressive={Boolean(config)}
       />
 
       <AddonPromptModal
@@ -2013,12 +2194,13 @@ function TierBasedApp({ onBackToFlows }) {
         onAdd={handleAddonPromptAdd}
         onSkip={handleAddonPromptSkip}
         onTopUp={handleOpenBuyCoins}
+        cost={addonCost}
       />
 
       <BuyCoinsScreen
         open={buyCoins.open && !buyCoins.result}
         coins={coins}
-        packs={COIN_PACKS}
+        packs={packs}
         selectedPackIndex={buyCoins.selectedPackIndex}
         onSelectPack={handleSelectPack}
         processing={buyCoins.processing}
@@ -2026,19 +2208,20 @@ function TierBasedApp({ onBackToFlows }) {
         onClose={handleCloseBuyCoins}
         simulateFailure={buyCoins.simulateFailure}
         onToggleSimulateFailure={handleToggleSimulateFailure}
+        couponEnabled={Boolean(config)}
       />
 
       <PaymentSuccessScreen
         open={buyCoins.open && buyCoins.result === "success"}
         coins={coins}
         priorBalance={buyCoins.priorBalance}
-        pack={COIN_PACKS[buyCoins.selectedPackIndex]}
+        pack={packs[buyCoins.selectedPackIndex]}
         onContinue={handleContinueAfterSuccess}
       />
 
       <PaymentFailedScreen
         open={buyCoins.open && buyCoins.result === "failed"}
-        pack={COIN_PACKS[buyCoins.selectedPackIndex]}
+        pack={packs[buyCoins.selectedPackIndex]}
         onTryAgain={handleTryPaymentAgain}
         onChoosePack={handleChooseDifferentPack}
       />
@@ -2092,6 +2275,16 @@ function FlowSelectScreen({ onSelectFlow }) {
       points: ["Bulk-discount capacity pricing", "Per-guest payments with premium upgrades", "Guest management, RSVP summary, coins & profile"],
       enabled: true,
     },
+    {
+      id: "flow4",
+      title: "Flow 4 · Final Flow",
+      status: "New pricing",
+      statusColor: "#4a3292",
+      statusBg: "#e2d9fe",
+      blurb: "A simpler three-lever model: template, Premium Features, and guest capacity — all priced in Elie Coins.",
+      points: ["25 guests free, then increasing capacity bands", "Premium template: 50 coins (75 regular)", "Premium Features and custom-design upload priced separately"],
+      enabled: true,
+    },
   ];
 
   return (
@@ -2110,7 +2303,7 @@ function FlowSelectScreen({ onSelectFlow }) {
         <p className="text-sm text-center mb-10" style={{ color: C.muted }}>
           Choose which payment flow prototype you want to test.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
           {flows.map((f) => (
             <button
               key={f.id}
@@ -3377,7 +3570,7 @@ function PerInviteApp({ onBackToFlows }) {
 
 // ---------- App ----------
 export default function App() {
-  const [activeFlow, setActiveFlow] = useState(null); // null | "flow1" | "flow2" | "flow3"
+  const [activeFlow, setActiveFlow] = useState(null); // null | "flow1" | "flow2" | "flow3" | "flow4"
 
   if (activeFlow === "flow1") {
     return <TierBasedApp onBackToFlows={() => setActiveFlow(null)} />;
@@ -3387,6 +3580,9 @@ export default function App() {
   }
   if (activeFlow === "flow3") {
     return <PerGuestPricingFlow onBackToFlows={() => setActiveFlow(null)} />;
+  }
+  if (activeFlow === "flow4") {
+    return <TierBasedApp config={FINAL_FLOW_CONFIG} onBackToFlows={() => setActiveFlow(null)} />;
   }
   return <FlowSelectScreen onSelectFlow={setActiveFlow} />;
 }
