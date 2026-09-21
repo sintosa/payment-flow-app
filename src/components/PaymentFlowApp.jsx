@@ -105,10 +105,7 @@ const TIER_CARDS = [
 // you pick. A Premium template just grants Basic-tier benefits for free —
 // it does NOT grant the Premium tier itself.
 function getRequiredTier(guestCount, tiers = TIER_CARDS) {
-  if (tiers !== TIER_CARDS) {
-    const caps = [25, 60, 100, 150, Infinity];
-    return tiers.find((tier) => guestCount <= caps[tier.level]) || tiers[tiers.length - 1];
-  }
+  if (tiers !== TIER_CARDS) return tiers.find((tier) => guestCount <= tier.cap) || tiers[tiers.length - 1];
   if (guestCount <= 50) return TIER_CARDS[0];
   if (guestCount <= 150) return TIER_CARDS[1];
   return TIER_CARDS[2];
@@ -124,13 +121,12 @@ const FINAL_COIN_PACKS = [
   { coins: 200, price: "$34.00", perCoin: "$0.17 / coin", badge: "Best Value" },
 ];
 const FINAL_TIER_CARDS = [
-  { level: 0, label: "FREE", cost: 0, range: "0–25 guests", benefit: "Invite your first 25 guests at no charge." },
-  { level: 1, label: "STARTER", cost: 25, range: "26–60 guests", benefit: "Pay 25 coins to unlock up to 60 guests." },
-  { level: 2, label: "GROWING", cost: 35, range: "61–100 guests", benefit: "Pay 35 coins to unlock up to 100 guests." },
-  { level: 3, label: "PREMIUM", cost: 50, range: "101–150 guests", benefit: "Pay 50 coins to unlock up to 150 guests." },
-  { level: 4, label: "CUSTOM", cost: null, range: "151+ guests", benefit: "Talk to us for a tailored high-volume event plan.", custom: true },
+  { level: 0, label: "FREE", cost: 0, originalCost: 0, cap: 25, range: "Up to 25", benefit: "Your first 25 guests are included." },
+  { level: 1, label: "STARTER", cost: 25, originalCost: 30, cap: 60, range: "Up to 60", benefit: "Guest capacity for up to 60 guests." },
+  { level: 2, label: "GROWING", cost: 55, originalCost: 80, cap: 100, range: "Up to 100", benefit: "Guest capacity for up to 100 guests." },
+  { level: 3, label: "CUSTOM", cost: null, originalCost: null, cap: Infinity, range: "Up to 150", benefit: "Custom guest capacity for your event.", custom: true },
 ];
-const FINAL_CAP_BY_LEVEL = [25, 60, 100, 150, Infinity];
+const FINAL_CAP_BY_LEVEL = [25, 60, 100, Infinity];
 const FINAL_TEMPLATES = [
   { id: "free", name: "Simple Get-Together", tag: "Free template", cost: 0, blurb: "A free template for a simple event. Guest capacity and Premium Features are chosen separately." },
   { id: "premium", name: "Golden Hour Soiree", tag: "Premium template", cost: 50, regularCost: 75, blurb: "A premium invitation design, currently discounted from 75 coins to 50 coins." },
@@ -140,6 +136,7 @@ const FINAL_FLOW_CONFIG = {
   label: "Flow 4 · Final Flow", startingCoins: 100, tiers: FINAL_TIER_CARDS,
   caps: FINAL_CAP_BY_LEVEL, templates: FINAL_TEMPLATES, packs: FINAL_COIN_PACKS,
   addonCost: 25, premiumTemplateGrantsTier: false, premiumTemplateIncludesFeatures: false,
+  deferAddonCharge: true, premiumCapacityCredit: 45,
   subtitle: "Three simple levers: choose a template, add Premium Features if you need them, and pay for guest capacity as your event grows.",
 };
 
@@ -214,12 +211,12 @@ function LockBlur({ locked, label, onUpgrade, children }) {
   );
 }
 
-function TierPricingModal({ open, mode, targetLevel, paidLevel = 0, coins, onPay, onClose, onTopUp, tiers = TIER_CARDS, progressive = false }) {
+function TierPricingModal({ open, mode, targetLevel, paidLevel = 0, coins, onPay, onClose, onTopUp, tiers = TIER_CARDS, progressive = false, capacityCredit = 0 }) {
   const [selectedLevel, setSelectedLevel] = useState(targetLevel);
   const [contactRequested, setContactRequested] = useState(false);
   if (!open) return null;
   const target = tiers[selectedLevel];
-  const alreadyPaid = progressive ? (tiers[paidLevel]?.cost || 0) : 0;
+  const alreadyPaid = progressive ? Math.max(tiers[paidLevel]?.cost || 0, capacityCredit) : 0;
   const payNow = target.custom ? 0 : Math.max(0, target.cost - alreadyPaid);
   const isIncluded = progressive && target.level < paidLevel;
   return (
@@ -251,7 +248,7 @@ function TierPricingModal({ open, mode, targetLevel, paidLevel = 0, coins, onPay
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
           {tiers.map((t) => {
             const isTarget = t.level === selectedLevel;
             return (
@@ -272,7 +269,8 @@ function TierPricingModal({ open, mode, targetLevel, paidLevel = 0, coins, onPay
                   </span>
                 </div>
                 <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: isTarget ? C.teal : C.muted }}>{t.label}</p>
-                <p className="text-xs font-semibold" style={{ color: C.text }}>{t.range}</p>
+                <p className="text-xs font-semibold" style={{ color: C.text }}>{t.range}{t.custom ? " guests" : " guests"}</p>
+                {t.originalCost > t.cost && <p className="text-[10px]" style={{ color: C.muted }}><span className="line-through">{t.originalCost}</span> <span style={{ color: C.red }}>−{Math.round((1 - t.cost / t.originalCost) * 100)}%</span></p>}
               </button>
             );
           })}
@@ -283,8 +281,8 @@ function TierPricingModal({ open, mode, targetLevel, paidLevel = 0, coins, onPay
             <div className="flex items-center justify-between gap-6">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.teal }}>Custom event pricing</p>
-                <p className="text-lg font-bold mt-1" style={{ color: C.text }}>151+ guests</p>
-                <p className="text-sm mt-2" style={{ color: C.muted }}>We&apos;ll tailor a guest-capacity plan around your event, audience, and features.</p>
+                <p className="text-lg font-bold mt-1" style={{ color: C.text }}>Up to 150 guests</p>
+                <p className="text-sm mt-2" style={{ color: C.muted }}>Contact us to tailor a guest-capacity plan around your event, audience, and features.</p>
               </div>
               <button onClick={() => setContactRequested(true)} className="shrink-0 px-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: C.navy }}>
                 {contactRequested ? "Request sent" : "Contact us"}
@@ -1013,7 +1011,7 @@ function TemplateScreen({ coins, onSelect, templates = TEMPLATES, subtitle = "Bo
 }
 
 // ---------- Screen 2: Edit Template (premium features are offered here) ----------
-function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, onContinue, onBack, premiumTemplateIncludesFeatures = true }) {
+function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, onContinue, onBack, premiumTemplateIncludesFeatures = true, onTogglePremiumFeatures, deferAddonCharge = false, addonCost = 10 }) {
   return (
     <div>
       <div className="flex items-center justify-between px-8 py-3 border-b" style={{ borderColor: C.border }}>
@@ -1101,12 +1099,13 @@ function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, on
                 </div>
                 <div>
                   <p className="text-sm font-bold" style={{ color: C.text }}>
-                    Premium Features added
+                    Premium Features selected
                   </p>
                   <p className="text-xs" style={{ color: C.muted }}>
-                    Polls, Surveys &amp; Broadcast are ready to use once your invite is live.
+                    {deferAddonCharge ? `${addonCost} coins will be included at Pay & Publish.` : "Polls, Surveys & Broadcast are ready to use once your invite is live."}
                   </p>
                 </div>
+                {onTogglePremiumFeatures && <button onClick={onTogglePremiumFeatures} className="ml-auto text-xs font-semibold underline" style={{ color: C.teal }}>Remove</button>}
               </div>
             ) : (
               <div className="rounded-xl p-4 flex items-center justify-between gap-3" style={{ border: `1px solid ${C.border}` }}>
@@ -1117,7 +1116,7 @@ function EditTemplateScreen({ template, addonPurchased, onAddPremiumFeatures, on
                       Premium Features
                     </p>
                     <p className="text-xs" style={{ color: C.muted }}>
-                      Polls, Surveys &amp; Broadcast for your guests.
+                      Polls, Surveys &amp; Broadcast for your guests{deferAddonCharge ? ` · ${addonCost} coins at publish` : "."}
                     </p>
                   </div>
                 </div>
@@ -1356,11 +1355,61 @@ function getPublishCost(template) {
   return template.cost;
 }
 
-function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPublish, onCancel, onTopUp, caps = [50, 150, 250], premiumTemplateIncludesFeatures = true, emphasizeSpend = false, publishButtonLabel = "Yes, Pay & Publish" }) {
-  const cost = getPublishCost(template);
+function getFinalFlowPricing({ template, capacityLevel, premiumFeatures }) {
+  const tier = FINAL_TIER_CARDS[capacityLevel];
+  const premiumTemplate = template?.id === "premium";
+  const capacityCredit = premiumTemplate ? FINAL_FLOW_CONFIG.premiumCapacityCredit : 0;
+  const capacityCost = tier?.custom ? 0 : Math.max(0, (tier?.cost || 0) - capacityCredit);
+  const templateCost = template?.cost || 0;
+  const featuresCost = premiumFeatures ? FINAL_FLOW_CONFIG.addonCost : 0;
+  return {
+    isCustom: Boolean(tier?.custom), tier, guestCap: tier?.cap || 25,
+    capacityCredit, templateCost, capacityCost, featuresCost,
+    total: templateCost + capacityCost + featuresCost,
+  };
+}
+
+function FinalCapacityScreen({ template, selectedLevel, onSelect, onContinue, onBack }) {
+  const pricing = getFinalFlowPricing({ template, capacityLevel: selectedLevel, premiumFeatures: false });
+  const selected = pricing.tier;
+  return (
+    <div className="max-w-4xl mx-auto px-6 py-10">
+      <div className="flex items-center justify-between mb-8">
+        <button onClick={onBack} className="flex items-center gap-1 text-sm font-semibold" style={{ color: C.text }}><ArrowLeft size={16} /> Back</button>
+        <p className="text-xs font-semibold" style={{ color: C.muted }}>Step 3 of 4 · Guest Capacity</p>
+      </div>
+      <h1 className="text-2xl font-bold" style={{ color: C.text }}>Choose guest capacity</h1>
+      <p className="text-sm mt-2 mb-7" style={{ color: C.muted }}>Your first 25 guests are included. Choose the capacity you expect for this event.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        {FINAL_TIER_CARDS.map((tier) => {
+          const active = selectedLevel === tier.level;
+          const discount = tier.originalCost ? Math.round((1 - tier.cost / tier.originalCost) * 100) : 0;
+          const due = tier.custom ? null : Math.max(0, tier.cost - (template.id === "premium" ? FINAL_FLOW_CONFIG.premiumCapacityCredit : 0));
+          return <button key={tier.level} onClick={() => onSelect(tier.level)} className="rounded-2xl p-5 text-left" style={{ border: `2px solid ${active ? C.teal : C.border}`, background: active ? C.tealLight : "white" }}>
+            <p className="text-xs font-bold uppercase tracking-wide" style={{ color: active ? C.teal : C.muted }}>{tier.label}</p>
+            <p className="text-xl font-bold mt-2" style={{ color: C.text }}>{tier.range} guests</p>
+            {tier.custom ? <p className="text-sm mt-4" style={{ color: C.muted }}>Contact us for a tailored plan.</p> : <div className="mt-5"><div className="flex items-center gap-1"><Coin size={18} /><span className="text-2xl font-bold" style={{ color: C.teal }}>{due}</span><span className="text-sm" style={{ color: C.muted }}>due now</span></div>{tier.originalCost > tier.cost && <p className="text-xs mt-1" style={{ color: C.muted }}><span className="line-through">{tier.originalCost} coins</span> <span className="ml-1 font-semibold" style={{ color: C.red }}>−{discount}%</span></p>}</div>}
+          </button>;
+        })}
+      </div>
+      {template.id === "premium" && !selected.custom && (
+        <div className="mt-5 rounded-2xl px-5 py-4" style={{ background: C.tealLight, border: `1px solid ${C.teal}` }}>
+          <p className="text-sm font-bold" style={{ color: C.teal }}>Premium template capacity credit</p>
+          <p className="text-sm mt-1" style={{ color: C.text }}>
+            Up to 60 guests are included. {selected.level === 2 ? "Your 55-coin Up to 100 tier is reduced by a 45-coin credit, so only 10 coins are due." : "No guest-capacity coins are due for this selection."}
+          </p>
+        </div>
+      )}
+      {selected.custom ? <div className="mt-6 rounded-2xl p-5 flex items-center justify-between gap-4" style={{ background: "#fff4d8", border: "1px solid #edc55d" }}><div><p className="font-bold" style={{ color: C.text }}>Custom capacity for up to 150 guests</p><p className="text-sm mt-1" style={{ color: C.muted }}>Contact us to set up a tailored event plan.</p></div><button className="px-4 py-2.5 rounded-xl text-white font-semibold" style={{ background: C.navy }}>Contact us</button></div> : <div className="mt-7 flex justify-end"><button onClick={onContinue} className="px-6 py-3 rounded-xl text-white font-semibold" style={{ background: C.navy }}>Review pricing</button></div>}
+    </div>
+  );
+}
+
+function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPublish, onCancel, onTopUp, caps = [50, 150, 250], premiumTemplateIncludesFeatures = true, emphasizeSpend = false, publishButtonLabel = "Yes, Pay & Publish", pricing = null }) {
+  const cost = pricing?.total ?? getPublishCost(template);
   const canPay = coins >= cost;
   const shortfall = Math.max(0, cost - coins);
-  const guestCap = caps[paidLevel];
+  const guestCap = pricing?.guestCap ?? caps[paidLevel];
   const hasPremiumFeatures = addonPurchased || (premiumTemplateIncludesFeatures && template.id === "premium");
 
   return (
@@ -1396,9 +1445,8 @@ function ConfirmPublishScreen({ template, paidLevel, addonPurchased, coins, onPu
             {emphasizeSpend ? (
               <>
                 <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.muted }}>Cost breakdown</p>
-                <div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>{template.tag}</span><span className="font-bold" style={{ color: C.text }}>{cost} coins</span></div>
-                <div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>First {guestCap} guests</span><span className="font-semibold" style={{ color: C.green }}>Free</span></div>
-                <div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>{hasPremiumFeatures ? "Premium Features" : "Basic features"}</span><span className="font-semibold" style={{ color: C.green }}>Included</span></div>
+                <div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>{template.tag}</span><span className="font-bold" style={{ color: C.text }}>{pricing ? pricing.templateCost : cost} coins</span></div>
+                {pricing ? <><div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>{pricing.tier.range} guests</span><span className="font-bold" style={{ color: pricing.capacityCost ? C.text : C.green }}>{pricing.capacityCost ? `${pricing.capacityCost} coins` : "Included"}</span></div><div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>Premium Features</span><span className="font-bold" style={{ color: pricing.featuresCost ? C.text : C.green }}>{pricing.featuresCost ? `${pricing.featuresCost} coins` : "Not selected"}</span></div></> : <><div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>First {guestCap} guests</span><span className="font-semibold" style={{ color: C.green }}>Free</span></div><div className="flex items-center justify-between text-sm"><span style={{ color: C.text }}>{hasPremiumFeatures ? "Premium Features" : "Basic features"}</span><span className="font-semibold" style={{ color: C.green }}>Included</span></div></>}
                 <div className="flex items-center justify-between pt-3 mt-1" style={{ borderTop: `1px solid ${C.border}` }}><span className="font-bold" style={{ color: C.text }}>Total due now</span><span className="text-xl font-bold flex items-center gap-1" style={{ color: C.teal }}><Coin size={18} />{cost}</span></div>
               </>
             ) : (
@@ -1916,7 +1964,7 @@ function TierBasedApp({ onBackToFlows, config = null }) {
   const packs = config?.packs || COIN_PACKS;
   const addonCost = config?.addonCost || 10;
   const startingCoins = config?.startingCoins || 100;
-  const [screen, setScreen] = useState("template"); // template | editTemplate | confirm | live | dashboard | guestManagement
+  const [screen, setScreen] = useState("template"); // template | editTemplate | capacity | confirm | live | dashboard | guestManagement
   const [dashboardTab, setDashboardTab] = useState("guests");
   const [coins, setCoins] = useState(startingCoins);
   const [template, setTemplate] = useState(null);
@@ -1927,6 +1975,7 @@ function TierBasedApp({ onBackToFlows, config = null }) {
   const [addonPurchased, setAddonPurchased] = useState(false);
   const [addonDeclined, setAddonDeclined] = useState(false);
   const [addonPromptOpen, setAddonPromptOpen] = useState(false);
+  const [plannedCapacityLevel, setPlannedCapacityLevel] = useState(0);
 
   const [modal, setModal] = useState({ open: false, mode: "select", targetLevel: 0, pending: null });
   const [buyCoins, setBuyCoins] = useState({ open: false, selectedPackIndex: 1, processing: false, result: null, priorBalance: 0, simulateFailure: false });
@@ -1983,13 +2032,23 @@ function TierBasedApp({ onBackToFlows, config = null }) {
     } else {
       setPaidLevel(0);
     }
+    if (config) setPlannedCapacityLevel(t.id === "premium" ? 1 : 0);
     setScreen("editTemplate");
   };
 
-  const handleAddPremiumFeaturesClick = () => setAddonPromptOpen(true);
+  const handleAddPremiumFeaturesClick = () => {
+    if (config?.deferAddonCharge) {
+      setAddonPurchased((selected) => !selected);
+      return;
+    }
+    setAddonPromptOpen(true);
+  };
+
+  const finalPricing = config && template ? getFinalFlowPricing({ template, capacityLevel: plannedCapacityLevel, premiumFeatures: addonPurchased }) : null;
 
   const handlePublish = () => {
-    setCoins((c) => c - getPublishCost(template));
+    setCoins((c) => c - (finalPricing?.total ?? getPublishCost(template)));
+    if (config) setPaidLevel(plannedCapacityLevel);
     setScreen("live");
   };
 
@@ -1997,7 +2056,9 @@ function TierBasedApp({ onBackToFlows, config = null }) {
   // the guest tiers are billed later and any premium-features add-on was already charged
   // the moment it was added. So skip the confirm screen and go straight to "Invite is Live".
   const handleFinishEditTemplate = () => {
-    if (template.cost > 0) {
+    if (config) {
+      setScreen("capacity");
+    } else if (template.cost > 0) {
       setScreen("confirm");
     } else {
       setScreen("live");
@@ -2018,6 +2079,7 @@ function TierBasedApp({ onBackToFlows, config = null }) {
     setCoins((c) => c - cost);
     setAddonPurchased(true);
     setAddonPromptOpen(false);
+    setPlannedCapacityLevel(0);
   };
 
   const handleAddonPromptSkip = () => {
@@ -2101,10 +2163,13 @@ function TierBasedApp({ onBackToFlows, config = null }) {
           onContinue={handleFinishEditTemplate}
           onBack={() => setScreen("template")}
           premiumTemplateIncludesFeatures={config?.premiumTemplateIncludesFeatures !== false}
-          emphasizeSpend={Boolean(config)}
-          publishButtonLabel={config ? "Yes, Publish" : "Yes, Pay & Publish"}
+          onTogglePremiumFeatures={config ? handleAddPremiumFeaturesClick : undefined}
+          deferAddonCharge={Boolean(config?.deferAddonCharge)}
+          addonCost={addonCost}
         />
       )}
+
+      {screen === "capacity" && template && config && <FinalCapacityScreen template={template} selectedLevel={plannedCapacityLevel} onSelect={setPlannedCapacityLevel} onContinue={() => setScreen("confirm")} onBack={() => setScreen("editTemplate")} />}
 
       {screen === "confirm" && template && (
         <ConfirmPublishScreen
@@ -2117,6 +2182,9 @@ function TierBasedApp({ onBackToFlows, config = null }) {
           onTopUp={handleOpenBuyCoins}
           caps={config ? caps : [50, 150, 250]}
           premiumTemplateIncludesFeatures={config?.premiumTemplateIncludesFeatures !== false}
+          emphasizeSpend={Boolean(config)}
+          publishButtonLabel={config ? "Yes, Publish" : "Yes, Pay & Publish"}
+          pricing={finalPricing}
         />
       )}
 
@@ -2186,6 +2254,7 @@ function TierBasedApp({ onBackToFlows, config = null }) {
         onTopUp={handleOpenBuyCoins}
         tiers={tiers}
         progressive={Boolean(config)}
+        capacityCredit={template?.id === "premium" ? config?.premiumCapacityCredit || 0 : 0}
       />
 
       <AddonPromptModal
