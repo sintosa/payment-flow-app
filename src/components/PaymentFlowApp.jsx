@@ -124,9 +124,10 @@ const FINAL_TIER_CARDS = [
   { level: 0, label: "FREE", cost: 0, originalCost: 0, cap: 25, range: "Up to 25", benefit: "Your first 25 guests are included." },
   { level: 1, label: "STARTER", cost: 25, originalCost: 30, cap: 60, range: "Up to 60", benefit: "Guest capacity for up to 60 guests." },
   { level: 2, label: "GROWING", cost: 55, originalCost: 80, cap: 100, range: "Up to 100", benefit: "Guest capacity for up to 100 guests." },
-  { level: 3, label: "CUSTOM", cost: null, originalCost: null, cap: Infinity, range: "Up to 150", benefit: "Custom guest capacity for your event.", custom: true },
+  { level: 3, label: "PREMIUM", cost: 80, originalCost: null, cap: 150, range: "Up to 150", benefit: "Guest capacity for up to 150 guests." },
+  { level: 4, label: "CUSTOM", cost: null, originalCost: null, cap: Infinity, range: "150+", benefit: "Custom guest capacity for your event.", custom: true },
 ];
-const FINAL_CAP_BY_LEVEL = [25, 60, 100, Infinity];
+const FINAL_CAP_BY_LEVEL = [25, 60, 100, 150, Infinity];
 const FINAL_TEMPLATES = [
   { id: "free", name: "Simple Get-Together", tag: "Free template", cost: 0, blurb: "A free template for a simple event. Guest capacity and Premium Features are chosen separately." },
   { id: "premium", name: "Golden Hour Soiree", tag: "Premium template", cost: 50, regularCost: 75, blurb: "A premium invitation design, currently discounted from 75 coins to 50 coins." },
@@ -136,7 +137,7 @@ const FINAL_FLOW_CONFIG = {
   label: "Flow 4 · Final Flow", startingCoins: 100, tiers: FINAL_TIER_CARDS,
   caps: FINAL_CAP_BY_LEVEL, templates: FINAL_TEMPLATES, packs: FINAL_COIN_PACKS,
   addonCost: 25, premiumTemplateGrantsTier: false, premiumTemplateIncludesFeatures: false,
-  deferAddonCharge: true, premiumCapacityCredit: 45,
+  deferAddonCharge: true, premiumCapacityCredit: 25,
   subtitle: "Three simple levers: choose a template, add Premium Features if you need them, and pay for guest capacity as your event grows.",
 };
 
@@ -248,7 +249,7 @@ function TierPricingModal({ open, mode, targetLevel, paidLevel = 0, coins, onPay
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-5">
           {tiers.map((t) => {
             const isTarget = t.level === selectedLevel;
             return (
@@ -281,7 +282,7 @@ function TierPricingModal({ open, mode, targetLevel, paidLevel = 0, coins, onPay
             <div className="flex items-center justify-between gap-6">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wide" style={{ color: C.teal }}>Custom event pricing</p>
-                <p className="text-lg font-bold mt-1" style={{ color: C.text }}>Up to 150 guests</p>
+                <p className="text-lg font-bold mt-1" style={{ color: C.text }}>150+ guests</p>
                 <p className="text-sm mt-2" style={{ color: C.muted }}>Contact us to tailor a guest-capacity plan around your event, audience, and features.</p>
               </div>
               <button onClick={() => setContactRequested(true)} className="shrink-0 px-4 py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: C.navy }}>
@@ -1380,7 +1381,7 @@ function FinalCapacityScreen({ template, selectedLevel, onSelect, onContinue, on
       </div>
       <h1 className="text-2xl font-bold" style={{ color: C.text }}>Choose guest capacity</h1>
       <p className="text-sm mt-2 mb-7" style={{ color: C.muted }}>Your first 25 guests are included. Choose the capacity you expect for this event.</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
         {FINAL_TIER_CARDS.map((tier) => {
           const active = selectedLevel === tier.level;
           const discount = tier.originalCost ? Math.round((1 - tier.cost / tier.originalCost) * 100) : 0;
@@ -1396,11 +1397,11 @@ function FinalCapacityScreen({ template, selectedLevel, onSelect, onContinue, on
         <div className="mt-5 rounded-2xl px-5 py-4" style={{ background: C.tealLight, border: `1px solid ${C.teal}` }}>
           <p className="text-sm font-bold" style={{ color: C.teal }}>Premium template capacity credit</p>
           <p className="text-sm mt-1" style={{ color: C.text }}>
-            Up to 60 guests are included. {selected.level === 2 ? "Your 55-coin Up to 100 tier is reduced by a 45-coin credit, so only 10 coins are due." : "No guest-capacity coins are due for this selection."}
+            Up to 60 guests are included. {selected.level === 2 ? "Your 55-coin Up to 100 tier is reduced by the included 25-coin capacity credit, so 30 coins are due." : selected.level === 3 ? "Your 80-coin Up to 150 tier is reduced by the included 25-coin capacity credit, so 55 coins are due." : "No guest-capacity coins are due for this selection."}
           </p>
         </div>
       )}
-      {selected.custom ? <div className="mt-6 rounded-2xl p-5 flex items-center justify-between gap-4" style={{ background: "#fff4d8", border: "1px solid #edc55d" }}><div><p className="font-bold" style={{ color: C.text }}>Custom capacity for up to 150 guests</p><p className="text-sm mt-1" style={{ color: C.muted }}>Contact us to set up a tailored event plan.</p></div><button className="px-4 py-2.5 rounded-xl text-white font-semibold" style={{ background: C.navy }}>Contact us</button></div> : <div className="mt-7 flex justify-end"><button onClick={onContinue} className="px-6 py-3 rounded-xl text-white font-semibold" style={{ background: C.navy }}>Review pricing</button></div>}
+      {selected.custom ? <div className="mt-6 rounded-2xl p-5 flex items-center justify-between gap-4" style={{ background: "#fff4d8", border: "1px solid #edc55d" }}><div><p className="font-bold" style={{ color: C.text }}>Custom capacity for 150+ guests</p><p className="text-sm mt-1" style={{ color: C.muted }}>Contact us to set up a tailored event plan.</p></div><button className="px-4 py-2.5 rounded-xl text-white font-semibold" style={{ background: C.navy }}>Contact us</button></div> : <div className="mt-7 flex justify-end"><button onClick={onContinue} className="px-6 py-3 rounded-xl text-white font-semibold" style={{ background: C.navy }}>Review pricing</button></div>}
     </div>
   );
 }
